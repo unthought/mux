@@ -4,14 +4,8 @@ import {
   getThinkingLevelByModelKey,
   getThinkingLevelKey,
   getDisableWorkspaceAgentsKey,
-  PREFERRED_SYSTEM_1_MODEL_KEY,
-  PREFERRED_SYSTEM_1_THINKING_LEVEL_KEY,
 } from "@/common/constants/storage";
-import {
-  readPersistedState,
-  readPersistedString,
-  updatePersistedState,
-} from "@/browser/hooks/usePersistedState";
+import { readPersistedState, updatePersistedState } from "@/browser/hooks/usePersistedState";
 import { getDefaultModel } from "@/browser/hooks/useModelsFromSettings";
 import {
   buildSendMessageOptions,
@@ -74,20 +68,17 @@ export function getSendOptionsFromStorage(workspaceId: string): SendMessageOptio
 
   const providerOptions = getProviderOptions();
 
-  const system1Model = normalizeSystem1Model(readPersistedString(PREFERRED_SYSTEM_1_MODEL_KEY));
-  const system1ThinkingLevel = normalizeSystem1ThinkingLevel(
-    readPersistedState<unknown>(PREFERRED_SYSTEM_1_THINKING_LEVEL_KEY, "off")
-  );
+  // Plan mode instructions are now handled by the backend (has access to plan file path)
+
+  // Read disableWorkspaceAgents toggle (workspace-scoped)
 
   const disableWorkspaceAgents = readPersistedState<boolean>(
     getDisableWorkspaceAgentsKey(workspaceId),
     false
   );
 
-  return buildSendMessageOptions({
-    model: baseModel,
-    system1Model,
-    system1ThinkingLevel,
+  return {
+    model,
     agentId,
     thinkingLevel,
     providerOptions,

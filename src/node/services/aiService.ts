@@ -552,6 +552,7 @@ export class AIService extends EventEmitter {
       hasQueuedMessage,
       openaiTruncationModeOverride,
     } = opts;
+
     // Support interrupts during startup (before StreamManager emits stream-start).
     // We register an AbortController up-front and let stopStream() abort it.
     const pendingAbortController = new AbortController();
@@ -1133,25 +1134,682 @@ export class AIService extends EventEmitter {
       }
       const toolsForStream =
         experiments?.system1 === true
-          ? wrapToolsWithSystem1({
-              tools,
-              system1Model,
-              system1ThinkingLevel,
-              modelString,
-              effectiveModelString,
-              primaryModel: modelResult.data.model,
-              muxProviderOptions: effectiveMuxProviderOptions,
-              workspaceId,
-              effectiveMode,
-              planFilePath,
-              taskSettings,
-              runtimeTempDir,
-              runtime,
-              agentDiscoveryPath,
-              createModel: (ms, o) => this.createModel(ms, o),
-              emitBashOutput: (ev) => this.emit("bash-output", ev),
-              sessionUsageService: this.sessionUsageService,
-            })
+          ? (() => {
+              const baseBashTool = tools.bash;
+              const baseBashOutputTool = tools.bash_output;
+              const baseTaskAwaitTool = tools.task_await;
+              if (!baseBashTool) {
+                return tools;
+              }
+
+              const baseBashToolRecord = baseBashTool as unknown as Record<string, unknown>;
+              const originalExecute = baseBashToolRecord.execute;
+              if (typeof originalExecute !== "function") {
+                return tools;
+              }
+
+              const executeFn = originalExecute as (
+                this: unknown,
+                args: unknown,
+                options: unknown
+              ) => Promise<unknown>;
+
+              const getExecuteFnForTool = (
+                targetTool: Tool | undefined
+              ):
+                | ((this: unknown, args: unknown, options: unknown) => Promise<unknown>)
+                | undefined => {
+                if (!targetTool) {
+                  return undefined;
+                }
+
+                const toolRecord = targetTool as unknown as Record<string, unknown>;
+                const execute = toolRecord.execute;
+                if (typeof execute !== "function") {
+                  return undefined;
+                }
+
+                return execute as (
+                  this: unknown,
+                  args: unknown,
+                  options: unknown
+                ) => Promise<unknown>;
+              };
+
+              const bashOutputExecuteFn = getExecuteFnForTool(baseBashOutputTool);
+              const taskAwaitExecuteFn = getExecuteFnForTool(baseTaskAwaitTool);
+
+              const applyMuxGatewayToSystem1Model = (candidateModelString: string): string => {
+                const trimmedCandidate = candidateModelString.trim();
+                if (!trimmedCandidate) {
+                  return "";
+                }
+                if (trimmedCandidate.startsWith("mux-gateway:")) {
+                  return trimmedCandidate;
+                }
+
+                if (cfg.muxGatewayEnabled === false) {
+                  return trimmedCandidate;
+                }
+
+                const enabledModels = cfg.muxGatewayModels ?? [];
+                if (!enabledModels.includes(trimmedCandidate)) {
+                  return trimmedCandidate;
+                }
+
+                const colonIndex = trimmedCandidate.indexOf(":");
+                if (colonIndex === -1) {
+                  return trimmedCandidate;
+                }
+
+                const provider = trimmedCandidate.slice(0, colonIndex);
+                if (
+                  provider !== "anthropic" &&
+                  provider !== "openai" &&
+                  provider !== "google" &&
+                  provider !== "xai"
+                ) {
+                  return trimmedCandidate;
+                }
+
+                const providersConfig = this.config.loadProvidersConfig();
+                const gatewayConfig: ProviderConfig = providersConfig?.["mux-gateway"] ?? {};
+                const gatewayCreds = resolveProviderCredentials("mux-gateway", gatewayConfig);
+                if (!gatewayCreds.isConfigured || !gatewayCreds.couponCode) {
+                  return trimmedCandidate;
+                }
+
+                const model = trimmedCandidate.slice(colonIndex + 1);
+                return `mux-gateway:${provider}/${model}`;
+              };
+
+              const system1Defaults = cfg.agentAiDefaults?.system1_bash;
+              const system1ModelOverride =
+                typeof system1Defaults?.modelString === "string"
+                  ? system1Defaults.modelString.trim()
+                  : "";
+              const system1ModelCandidate = system1ModelOverride || modelString;
+              const system1ModelString = applyMuxGatewayToSystem1Model(system1ModelCandidate);
+
+              const system1ThinkingLevel = system1Defaults?.thinkingLevel ?? "off";
+              const effectiveSystem1ThinkingLevel = enforceThinkingPolicy(
+                system1ModelString,
+                system1ThinkingLevel
+              );
+
+              const usePrimaryModelForSystem1 = system1ModelString === modelString;
+
+              let cachedSystem1Model: { modelString: string; model: LanguageModel } | undefined;
+              let cachedSystem1ModelFailed = false;
+
+              const getSystem1ModelForStream = async (): Promise<
+                { modelString: string; model: LanguageModel } | undefined
+              > => {
+                if (usePrimaryModelForSystem1) {
+                  return { modelString, model: modelResult.data };
+                }
+
+                if (cachedSystem1Model) {
+                  return cachedSystem1Model;
+                }
+                if (cachedSystem1ModelFailed) {
+                  return undefined;
+                }
+
+                const created = await this.createModel(
+                  system1ModelString,
+                  effectiveMuxProviderOptions
+                );
+                if (!created.success) {
+                  cachedSystem1ModelFailed = true;
+                  log.debug("[system1] Failed to create System 1 model", {
+                    workspaceId,
+                    system1Model: system1ModelString,
+                    error: created.error,
+                  });
+                  return undefined;
+                }
+
+                cachedSystem1Model = { modelString: system1ModelString, model: created.data };
+                return cachedSystem1Model;
+              };
+
+              const maybeFilterBashOutputWithSystem1 = async (params: {
+                toolName: string;
+                output: string;
+                script: string;
+                displayName?: string;
+                toolCallId?: string;
+                abortSignal?: AbortSignal;
+              }): Promise<{ filteredOutput: string; notice: string } | undefined> => {
+                let system1TimedOut = false;
+
+                try {
+                  if (typeof params.output !== "string" || params.output.length === 0) {
+                    return undefined;
+                  }
+
+                  const minLines =
+                    taskSettings.bashOutputCompactionMinLines ??
+                    SYSTEM1_BASH_OUTPUT_COMPACTION_LIMITS.bashOutputCompactionMinLines.default;
+                  const minTotalBytes =
+                    taskSettings.bashOutputCompactionMinTotalBytes ??
+                    SYSTEM1_BASH_OUTPUT_COMPACTION_LIMITS.bashOutputCompactionMinTotalBytes.default;
+                  const userMaxKeptLines =
+                    taskSettings.bashOutputCompactionMaxKeptLines ??
+                    SYSTEM1_BASH_OUTPUT_COMPACTION_LIMITS.bashOutputCompactionMaxKeptLines.default;
+                  const heuristicFallbackEnabled =
+                    taskSettings.bashOutputCompactionHeuristicFallback ??
+                    DEFAULT_TASK_SETTINGS.bashOutputCompactionHeuristicFallback ??
+                    true;
+
+                  const timeoutMs =
+                    taskSettings.bashOutputCompactionTimeoutMs ??
+                    SYSTEM1_BASH_OUTPUT_COMPACTION_LIMITS.bashOutputCompactionTimeoutMs.default;
+
+                  const lines = splitBashOutputLines(params.output);
+                  const bytes = Buffer.byteLength(params.output, "utf-8");
+
+                  const decision = decideBashOutputCompaction({
+                    toolName: params.toolName,
+                    script: params.script,
+                    displayName: params.displayName,
+                    planFilePath: effectiveMode === "plan" ? planFilePath : undefined,
+                    totalLines: lines.length,
+                    totalBytes: bytes,
+                    minLines,
+                    minTotalBytes,
+                    maxKeptLines: userMaxKeptLines,
+                  });
+
+                  const triggeredByLines = decision.triggeredByLines;
+                  const triggeredByBytes = decision.triggeredByBytes;
+
+                  if (!triggeredByLines && !triggeredByBytes) {
+                    return undefined;
+                  }
+
+                  if (!decision.shouldCompact) {
+                    log.debug("[system1] Skipping bash output compaction", {
+                      workspaceId,
+                      toolName: params.toolName,
+                      skipReason: decision.skipReason,
+                      intent: decision.intent,
+                      alreadyTargeted: decision.alreadyTargeted,
+                      displayName: params.displayName,
+                      totalLines: lines.length,
+                      totalBytes: bytes,
+                      triggeredByLines,
+                      triggeredByBytes,
+                      minLines,
+                      minTotalBytes,
+                      userMaxKeptLines,
+                      heuristicFallbackEnabled,
+                      timeoutMs,
+                    });
+
+                    return undefined;
+                  }
+
+                  const maxKeptLines = decision.effectiveMaxKeptLines;
+
+                  log.debug("[system1] Bash output compaction triggered", {
+                    workspaceId,
+                    toolName: params.toolName,
+                    intent: decision.intent,
+                    alreadyTargeted: decision.alreadyTargeted,
+                    displayName: params.displayName,
+                    totalLines: lines.length,
+                    totalBytes: bytes,
+                    triggeredByLines,
+                    triggeredByBytes,
+                    minLines,
+                    minTotalBytes,
+                    userMaxKeptLines,
+                    maxKeptLines,
+                    heuristicFallbackEnabled,
+                    timeoutMs,
+                  });
+
+                  let fullOutputPath: string | undefined;
+                  try {
+                    // Use 8 hex characters for short, memorable temp file IDs.
+                    const fileId = Math.random().toString(16).substring(2, 10);
+                    fullOutputPath = path.posix.join(runtimeTempDir, `bash-full-${fileId}.txt`);
+
+                    const writer = runtime.writeFile(fullOutputPath, params.abortSignal);
+                    const encoder = new TextEncoder();
+                    const writerInstance = writer.getWriter();
+                    await writerInstance.write(encoder.encode(params.output));
+                    await writerInstance.close();
+                  } catch (error) {
+                    log.debug("[system1] Failed to save full bash output to temp file", {
+                      workspaceId,
+                      error: error instanceof Error ? error.message : String(error),
+                    });
+                    fullOutputPath = undefined;
+                  }
+
+                  const system1 = await getSystem1ModelForStream();
+                  if (!system1) {
+                    return undefined;
+                  }
+
+                  const system1ProviderOptions = buildProviderOptions(
+                    system1.modelString,
+                    effectiveSystem1ThinkingLevel,
+                    undefined,
+                    undefined,
+                    effectiveMuxProviderOptions,
+                    workspaceId
+                  ) as unknown as Record<string, unknown>;
+
+                  const numberedOutput = formatNumberedLinesForSystem1(lines);
+
+                  const startTimeMs = Date.now();
+
+                  if (typeof params.toolCallId === "string" && params.toolCallId.length > 0) {
+                    this.emit("bash-output", {
+                      type: "bash-output",
+                      workspaceId,
+                      toolCallId: params.toolCallId,
+                      phase: "filtering",
+                      text: "",
+                      isError: false,
+                      timestamp: Date.now(),
+                    } satisfies BashOutputEvent);
+                  }
+
+                  let filterMethod: "system1" | "heuristic" = "system1";
+                  let keepRangesCount = 0;
+                  let finishReason: string | undefined;
+                  let lastErrorName: string | undefined;
+                  let lastErrorMessage: string | undefined;
+
+                  let applied: ReturnType<typeof applySystem1KeepRangesToOutput> = undefined;
+
+                  try {
+                    const keepRangesResult = await runSystem1KeepRangesForBashOutput({
+                      runtime,
+                      agentDiscoveryPath,
+                      runtimeTempDir,
+                      model: system1.model,
+                      modelString: system1.modelString,
+                      providerOptions: system1ProviderOptions,
+                      displayName: params.displayName,
+                      script: params.script,
+                      numberedOutput,
+                      maxKeptLines,
+                      timeoutMs,
+                      abortSignal: params.abortSignal,
+                      onTimeout: () => {
+                        system1TimedOut = true;
+                      },
+                    });
+
+                    if (keepRangesResult) {
+                      finishReason = keepRangesResult.finishReason;
+                      keepRangesCount = keepRangesResult.keepRanges.length;
+                      applied = applySystem1KeepRangesToOutput({
+                        rawOutput: params.output,
+                        keepRanges: keepRangesResult.keepRanges,
+                        maxKeptLines,
+                      });
+                    }
+                  } catch (error) {
+                    lastErrorName = error instanceof Error ? error.name : undefined;
+                    lastErrorMessage = error instanceof Error ? error.message : String(error);
+                  }
+
+                  if (!applied || applied.keptLines === 0) {
+                    const elapsedMs = Date.now() - startTimeMs;
+                    const upstreamAborted = params.abortSignal?.aborted ?? false;
+
+                    log.debug("[system1] Failed to generate keep_ranges", {
+                      workspaceId,
+                      toolName: params.toolName,
+                      system1Model: system1.modelString,
+                      elapsedMs,
+                      timedOut: system1TimedOut,
+                      upstreamAborted,
+                      keepRangesCount,
+                      errorName: lastErrorName,
+                      error: lastErrorMessage,
+                    });
+
+                    if (!heuristicFallbackEnabled || upstreamAborted) {
+                      return undefined;
+                    }
+
+                    const heuristicKeepRanges = getHeuristicKeepRangesForBashOutput({
+                      lines,
+                      maxKeptLines,
+                    });
+                    keepRangesCount = heuristicKeepRanges.length;
+                    applied = applySystem1KeepRangesToOutput({
+                      rawOutput: params.output,
+                      keepRanges: heuristicKeepRanges,
+                      maxKeptLines,
+                    });
+                    filterMethod = "heuristic";
+                  }
+
+                  if (!applied || applied.keptLines === 0) {
+                    log.debug("[system1] keep_ranges produced empty filtered output", {
+                      workspaceId,
+                      toolName: params.toolName,
+                      filterMethod,
+                      keepRangesCount,
+                      maxKeptLines,
+                      totalLines: lines.length,
+                    });
+                    return undefined;
+                  }
+
+                  const elapsedMs = Date.now() - startTimeMs;
+
+                  const trigger = [
+                    triggeredByLines ? "lines" : null,
+                    triggeredByBytes ? "bytes" : null,
+                  ]
+                    .filter(Boolean)
+                    .join("+");
+
+                  const notice = formatSystem1BashFilterNotice({
+                    keptLines: applied.keptLines,
+                    totalLines: applied.totalLines,
+                    trigger,
+                    fullOutputPath,
+                  });
+
+                  log.debug("[system1] Filtered bash tool output", {
+                    workspaceId,
+                    toolName: params.toolName,
+                    intent: decision.intent,
+                    alreadyTargeted: decision.alreadyTargeted,
+                    displayName: params.displayName,
+                    userMaxKeptLines,
+                    maxKeptLines,
+                    system1Model: system1.modelString,
+                    filterMethod,
+                    keepRangesCount,
+                    finishReason,
+                    elapsedMs,
+                    keptLines: applied.keptLines,
+                    totalLines: applied.totalLines,
+                    totalBytes: bytes,
+                    triggeredByLines,
+                    triggeredByBytes,
+                    timeoutMs,
+                  });
+
+                  return { filteredOutput: applied.filteredOutput, notice };
+                } catch (error) {
+                  const errorMessage = error instanceof Error ? error.message : String(error);
+                  const errorName = error instanceof Error ? error.name : undefined;
+                  const upstreamAborted = params.abortSignal?.aborted ?? false;
+                  const isAbortError = errorName === "AbortError";
+
+                  log.debug("[system1] Failed to filter bash tool output", {
+                    workspaceId,
+                    toolName: params.toolName,
+                    error: errorMessage,
+                    errorName,
+                    timedOut: system1TimedOut,
+                    upstreamAborted,
+                    isAbortError,
+                  });
+                  return undefined;
+                }
+              };
+
+              const wrappedBashTool = cloneToolPreservingDescriptors(baseBashTool);
+              const wrappedBashToolRecord = wrappedBashTool as unknown as Record<string, unknown>;
+
+              wrappedBashToolRecord.execute = async (args: unknown, options: unknown) => {
+                const result: unknown = await executeFn.call(baseBashTool, args, options);
+
+                try {
+                  const runInBackground =
+                    Boolean(
+                      (args as { run_in_background?: unknown } | undefined)?.run_in_background
+                    ) ||
+                    (result && typeof result === "object" && "backgroundProcessId" in result);
+                  if (runInBackground) {
+                    return result;
+                  }
+
+                  const output = (result as { output?: unknown } | undefined)?.output;
+                  if (typeof output !== "string" || output.length === 0) {
+                    return result;
+                  }
+
+                  const displayName =
+                    typeof (args as { display_name?: unknown } | undefined)?.display_name ===
+                    "string"
+                      ? String((args as { display_name?: unknown }).display_name).trim() ||
+                        undefined
+                      : undefined;
+                  const script =
+                    typeof (args as { script?: unknown } | undefined)?.script === "string"
+                      ? String((args as { script?: unknown }).script)
+                      : "";
+
+                  const toolCallId =
+                    typeof (options as { toolCallId?: unknown } | undefined)?.toolCallId ===
+                    "string"
+                      ? (options as { toolCallId?: string }).toolCallId
+                      : undefined;
+
+                  const filtered = await maybeFilterBashOutputWithSystem1({
+                    toolName: "bash",
+                    output,
+                    script,
+                    displayName,
+                    toolCallId,
+                    abortSignal: (options as { abortSignal?: AbortSignal } | undefined)
+                      ?.abortSignal,
+                  });
+                  if (!filtered) {
+                    return result;
+                  }
+
+                  const existingNote = (result as { note?: unknown } | undefined)?.note;
+                  return {
+                    ...(result as Record<string, unknown>),
+                    output: filtered.filteredOutput,
+                    note: appendToolNote(
+                      typeof existingNote === "string" ? existingNote : undefined,
+                      filtered.notice
+                    ),
+                  };
+                } catch (error) {
+                  log.debug("[system1] Failed to filter bash tool output", {
+                    workspaceId,
+                    error: error instanceof Error ? error.message : String(error),
+                  });
+                  return result;
+                }
+              };
+
+              const wrappedTools: Record<string, Tool> = { ...tools, bash: wrappedBashTool };
+
+              if (baseBashOutputTool && bashOutputExecuteFn) {
+                const wrappedBashOutputTool = cloneToolPreservingDescriptors(baseBashOutputTool);
+                const wrappedBashOutputToolRecord = wrappedBashOutputTool as unknown as Record<
+                  string,
+                  unknown
+                >;
+
+                wrappedBashOutputToolRecord.execute = async (args: unknown, options: unknown) => {
+                  const result: unknown = await bashOutputExecuteFn.call(
+                    baseBashOutputTool,
+                    args,
+                    options
+                  );
+
+                  try {
+                    const output = (result as { output?: unknown } | undefined)?.output;
+                    if (typeof output !== "string" || output.length === 0) {
+                      return result;
+                    }
+
+                    const filtered = await maybeFilterBashOutputWithSystem1({
+                      toolName: "bash_output",
+                      output,
+                      script: "",
+                      abortSignal: (options as { abortSignal?: AbortSignal } | undefined)
+                        ?.abortSignal,
+                    });
+                    if (!filtered) {
+                      return result;
+                    }
+
+                    const existingNote = (result as { note?: unknown } | undefined)?.note;
+                    return {
+                      ...(result as Record<string, unknown>),
+                      output: filtered.filteredOutput,
+                      note: appendToolNote(
+                        typeof existingNote === "string" ? existingNote : undefined,
+                        filtered.notice
+                      ),
+                    };
+                  } catch (error) {
+                    log.debug("[system1] Failed to filter bash_output tool output", {
+                      workspaceId,
+                      error: error instanceof Error ? error.message : String(error),
+                    });
+                    return result;
+                  }
+                };
+
+                wrappedTools.bash_output = wrappedBashOutputTool;
+              }
+
+              if (baseTaskAwaitTool && taskAwaitExecuteFn) {
+                const wrappedTaskAwaitTool = cloneToolPreservingDescriptors(baseTaskAwaitTool);
+                const wrappedTaskAwaitToolRecord = wrappedTaskAwaitTool as unknown as Record<
+                  string,
+                  unknown
+                >;
+
+                wrappedTaskAwaitToolRecord.execute = async (args: unknown, options: unknown) => {
+                  const result: unknown = await taskAwaitExecuteFn.call(
+                    baseTaskAwaitTool,
+                    args,
+                    options
+                  );
+
+                  try {
+                    const resultsValue = (result as { results?: unknown } | undefined)?.results;
+                    if (!Array.isArray(resultsValue) || resultsValue.length === 0) {
+                      return result;
+                    }
+
+                    const filteredResults = await Promise.all(
+                      resultsValue.map(async (entry: unknown) => {
+                        if (!entry || typeof entry !== "object") {
+                          return entry;
+                        }
+
+                        const taskId = (entry as { taskId?: unknown }).taskId;
+                        if (typeof taskId !== "string" || !taskId.startsWith("bash:")) {
+                          return entry;
+                        }
+
+                        const status = (entry as { status?: unknown }).status;
+
+                        if (status === "running") {
+                          const output = (entry as { output?: unknown }).output;
+                          if (typeof output !== "string" || output.length === 0) {
+                            return entry;
+                          }
+
+                          const filtered = await maybeFilterBashOutputWithSystem1({
+                            toolName: "task_await",
+                            output,
+                            script: "",
+                            abortSignal: (options as { abortSignal?: AbortSignal } | undefined)
+                              ?.abortSignal,
+                          });
+                          if (!filtered) {
+                            return entry;
+                          }
+
+                          const existingNote = (entry as { note?: unknown }).note;
+                          return {
+                            ...(entry as Record<string, unknown>),
+                            output: filtered.filteredOutput,
+                            note: appendToolNote(
+                              typeof existingNote === "string" ? existingNote : undefined,
+                              filtered.notice
+                            ),
+                          };
+                        }
+
+                        if (status === "completed") {
+                          const reportMarkdown = (entry as { reportMarkdown?: unknown })
+                            .reportMarkdown;
+                          if (typeof reportMarkdown !== "string" || reportMarkdown.length === 0) {
+                            return entry;
+                          }
+
+                          const parsed = tryParseBashOutputReport(reportMarkdown);
+                          if (!parsed || parsed.output.length === 0) {
+                            return entry;
+                          }
+
+                          const filtered = await maybeFilterBashOutputWithSystem1({
+                            toolName: "task_await",
+                            output: parsed.output,
+                            script: "",
+                            abortSignal: (options as { abortSignal?: AbortSignal } | undefined)
+                              ?.abortSignal,
+                          });
+                          if (!filtered) {
+                            return entry;
+                          }
+
+                          const nextReportMarkdown = formatBashOutputReport({
+                            processId: parsed.processId,
+                            status: parsed.status,
+                            exitCode: parsed.exitCode,
+                            output: filtered.filteredOutput,
+                          });
+
+                          const existingNote = (entry as { note?: unknown }).note;
+                          return {
+                            ...(entry as Record<string, unknown>),
+                            reportMarkdown: nextReportMarkdown,
+                            note: appendToolNote(
+                              typeof existingNote === "string" ? existingNote : undefined,
+                              filtered.notice
+                            ),
+                          };
+                        }
+
+                        return entry;
+                      })
+                    );
+
+                    return {
+                      ...(result as Record<string, unknown>),
+                      results: filteredResults,
+                    };
+                  } catch (error) {
+                    log.debug("[system1] Failed to filter task_await tool output", {
+                      workspaceId,
+                      error: error instanceof Error ? error.message : String(error),
+                    });
+                    return result;
+                  }
+                };
+
+                wrappedTools.task_await = wrappedTaskAwaitTool;
+              }
+
+              return wrappedTools;
+            })()
           : tools;
 
       this.memoryWriterContextsByMessageId.set(assistantMessageId, {
@@ -1163,8 +1821,6 @@ export class AIService extends EventEmitter {
         parentWorkspaceId: metadata.parentWorkspaceId,
         modelString,
         muxProviderOptions: effectiveMuxProviderOptions,
-        system1Model,
-        system1ThinkingLevel,
         system1Enabled: experiments?.system1 === true,
       });
 
