@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect, useRef } from "react";
 import { cn } from "@/common/lib/utils";
 import type { FrontendWorkspaceMetadata } from "@/common/types/workspace";
 import ProjectSidebar from "./ProjectSidebar";
@@ -33,6 +33,15 @@ export function LeftSidebar(props: LeftSidebarProps) {
 
   const width = collapsed ? "40px" : `${widthPx ?? 288}px`;
 
+  // Suppress the width transition on initial render to prevent a
+  // visual flash where the sidebar animates from a default size.
+  const hasMounted = useRef(false);
+  useEffect(() => {
+    requestAnimationFrame(() => {
+      hasMounted.current = true;
+    });
+  }, []);
+
   return (
     <>
       {/* Overlay backdrop - only visible on mobile when sidebar is open */}
@@ -49,7 +58,7 @@ export function LeftSidebar(props: LeftSidebarProps) {
         data-testid="left-sidebar"
         className={cn(
           "h-full bg-sidebar border-r border-border flex flex-col shrink-0 overflow-hidden relative z-20",
-          !isResizing && "transition-[width] duration-200",
+          !isResizing && hasMounted.current && "transition-[width] duration-200",
           "mobile-sidebar",
           collapsed && "mobile-sidebar-collapsed",
           // In desktop mode when collapsed, start border below titlebar height (32px)
