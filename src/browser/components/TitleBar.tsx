@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import { cn } from "@/common/lib/utils";
 import { VERSION } from "@/version";
-import { SettingsButton } from "./SettingsButton";
 import { GatewayIcon } from "./icons/GatewayIcon";
 import { Tooltip, TooltipTrigger, TooltipContent } from "./ui/tooltip";
 import type { UpdateStatus } from "@/common/orpc/types";
@@ -52,7 +51,7 @@ interface TitleBarProps {
   onBeforeOpenSettings?: () => void;
 }
 
-export function TitleBar(props: TitleBarProps) {
+export function TitleBar(_props: TitleBarProps) {
   const { api } = useAPI();
   const { open: openAboutDialog } = useAboutDialog();
   const policyState = usePolicy();
@@ -239,11 +238,6 @@ export function TitleBar(props: TitleBarProps) {
             <TooltipContent align="end">Your settings are controlled by a policy.</TooltipContent>
           </Tooltip>
         )}
-        <SettingsButton
-          // On touch/mobile, opening settings from the sidebar should also dismiss the
-          // off-canvas sidebar so users are not stuck with it covering the settings page.
-          onBeforeOpenSettings={props.onBeforeOpenSettings}
-        />
       </div>
     </div>
   );
