@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { cn } from "@/common/lib/utils";
 import type { FrontendWorkspaceMetadata } from "@/common/types/workspace";
 import ProjectSidebar from "./ProjectSidebar";
@@ -31,17 +31,46 @@ export function LeftSidebar(props: LeftSidebarProps) {
 
   const width = collapsed ? "40px" : `${widthPx ?? 288}px`;
 
-  // Two-phase mount: first render sets the width without transition
-  // or visible content, then after a frame we reveal everything.
-  // This prevents the flash of squished content on initial load.
-  const [isReady, setIsReady] = useState(false);
+  // Track whether the sidebar content should be visible.
+  // Hidden on initial mount (to prevent squished flash) and during
+  // expand transitions (collapsed → expanded) until the width
+  // animation finishes.
+  const [contentVisible, setContentVisible] = useState(false);
+  const [enableTransition, setEnableTransition] = useState(false);
+  const prevCollapsed = useRef(collapsed);
+  const isInitialMount = useRef(true);
+
+  // Initial mount: reveal content after one frame (width has settled).
   useEffect(() => {
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
-        setIsReady(true);
+        setContentVisible(true);
+        setEnableTransition(true);
+        isInitialMount.current = false;
       });
     });
   }, []);
+
+  // When expanding (collapsed → not collapsed), hide content during
+  // the width transition, then reveal after it completes.
+  useEffect(() => {
+    if (isInitialMount.current) {
+      prevCollapsed.current = collapsed;
+      return;
+    }
+
+    if (prevCollapsed.current && !collapsed) {
+      // Expanding: hide content immediately, show after width transition.
+      setContentVisible(false);
+      const timer = setTimeout(() => {
+        setContentVisible(true);
+      }, 220); // slightly longer than the 200ms width transition
+      prevCollapsed.current = collapsed;
+      return () => clearTimeout(timer);
+    }
+
+    prevCollapsed.current = collapsed;
+  }, [collapsed]);
 
   return (
     <>
@@ -59,7 +88,7 @@ export function LeftSidebar(props: LeftSidebarProps) {
         data-testid="left-sidebar"
         className={cn(
           "h-full bg-sidebar border-r border-border flex flex-col shrink-0 overflow-hidden relative z-20",
-          isReady && !isResizing && "transition-[width] duration-200",
+          enableTransition && !isResizing && "transition-[width] duration-200",
           "mobile-sidebar",
           collapsed && "mobile-sidebar-collapsed",
           isDesktop &&
@@ -72,9 +101,9 @@ export function LeftSidebar(props: LeftSidebarProps) {
         <div
           className={cn(
             "flex flex-col flex-1 min-h-0",
-            isReady ? "opacity-100" : "opacity-0"
+            contentVisible ? "opacity-100" : "opacity-0"
           )}
-          style={{ transition: isReady ? "opacity 150ms ease-in" : "none" }}
+          style={{ transition: contentVisible ? "opacity 100ms ease-in" : "none" }}
         >
           <ProjectSidebar
             {...projectSidebarProps}
