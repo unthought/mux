@@ -50,7 +50,7 @@ import { WorkspaceListItem, type WorkspaceSelection } from "./WorkspaceListItem"
 import { WorkspaceStatusIndicator } from "./WorkspaceStatusIndicator";
 import { RenameProvider } from "@/browser/contexts/WorkspaceRenameContext";
 import { useProjectContext } from "@/browser/contexts/ProjectContext";
-import { ChevronRight, CircleHelp, KeyRound } from "lucide-react";
+import { ChevronRight, MessageCircle, KeyRound } from "lucide-react";
 import { MUX_HELP_CHAT_WORKSPACE_ID } from "@/common/constants/muxChat";
 import { useWorkspaceActions } from "@/browser/contexts/WorkspaceContext";
 import { useRouter } from "@/browser/contexts/RouterContext";
@@ -90,7 +90,7 @@ const MuxChatHelpButton: React.FC<{
           className="text-muted hover:text-primary relative flex shrink-0 cursor-pointer items-center border-none bg-transparent p-0 transition-colors"
           aria-label="Open Chat with Mux"
         >
-          <CircleHelp className="h-3.5 w-3.5" />
+          <MessageCircle className="h-3.5 w-3.5" />
           {isUnread && (
             <span
               className="bg-accent absolute -top-0.5 -right-0.5 h-1.5 w-1.5 rounded-full"

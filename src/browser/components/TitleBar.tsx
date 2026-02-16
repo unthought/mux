@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import { cn } from "@/common/lib/utils";
-import { VERSION } from "@/version";
 import { GatewayIcon } from "./icons/GatewayIcon";
 import { Tooltip, TooltipTrigger, TooltipContent } from "./ui/tooltip";
 import type { UpdateStatus } from "@/common/orpc/types";
@@ -24,28 +23,6 @@ import {
 // Update check interval
 const UPDATE_CHECK_INTERVAL_MS = 4 * 60 * 60 * 1000; // 4 hours
 
-interface VersionRecord {
-  git?: unknown;
-  git_describe?: unknown;
-}
-
-function getGitDescribe(version: unknown): string | undefined {
-  if (typeof version !== "object" || version === null) {
-    return undefined;
-  }
-
-  const versionRecord = version as VersionRecord;
-
-  if (typeof versionRecord.git_describe === "string") {
-    return versionRecord.git_describe;
-  }
-
-  if (typeof versionRecord.git === "string") {
-    return versionRecord.git;
-  }
-
-  return undefined;
-}
 
 interface TitleBarProps {
   onBeforeOpenSettings?: () => void;
@@ -64,7 +41,6 @@ export function TitleBar(_props: TitleBarProps) {
     refresh: refreshMuxGatewayAccountStatus,
   } = useMuxGatewayAccountStatus();
 
-  const gitDescribe = getGitDescribe(VERSION satisfies unknown);
   const [updateStatus, setUpdateStatus] = useState<UpdateStatus>({ type: "idle" });
 
   useEffect(() => {
@@ -147,41 +123,33 @@ export function TitleBar(_props: TitleBarProps) {
       <div
         // Desktop titlebar: this wrapper is `flex-1` (for version ellipsis) so it fills the gap.
         // Keep it draggable; apply `titlebar-no-drag` only to the interactive controls inside.
+        // Version display removed — now shown below the Mux logo in the sidebar.
         className={cn(
           "mr-4 flex min-w-0 flex-1",
           leftInset > 0 ? "flex-col" : "items-center gap-2"
         )}
       >
+        {/* Version + update badge hidden — version now in sidebar header */}
+        {updateBadgeIcon && (
         <Tooltip>
           <TooltipTrigger asChild>
             <button
               type="button"
               aria-label="Open about dialog"
               className={cn(
-                // Keep the version row shrinkable so long git-describe values ellipsize
-                // instead of overlapping the gateway/settings controls.
                 "flex min-w-0 max-w-full cursor-pointer items-center gap-1.5 border-0 bg-transparent p-0 text-left text-inherit transition-opacity hover:opacity-70",
                 isDesktop && "titlebar-no-drag"
               )}
               onClick={openAboutDialog}
             >
-              <div
-                className={cn(
-                  "min-w-0 flex-1 truncate font-normal tracking-wider",
-                  leftInset > 0 ? "text-[10px]" : "text-xs"
-                )}
-              >
-                {gitDescribe ?? "(dev)"}
+              <div className="text-accent flex h-3.5 w-3.5 items-center justify-center">
+                {updateBadgeIcon}
               </div>
-              {updateBadgeIcon && (
-                <div className="text-accent flex h-3.5 w-3.5 items-center justify-center">
-                  {updateBadgeIcon}
-                </div>
-              )}
             </button>
           </TooltipTrigger>
           <TooltipContent align="start">Click for more details</TooltipContent>
         </Tooltip>
+        )}
       </div>
       <div className={cn("flex shrink-0 items-center gap-1.5", isDesktop && "titlebar-no-drag")}>
         {gateway.isActive && (
