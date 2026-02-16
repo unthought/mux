@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from "react";
+import { VERSION } from "@/version";
 import { cn } from "@/common/lib/utils";
 import { isDesktopMode } from "@/browser/hooks/useDesktopTitlebar";
 import MuxLogoDark from "@/browser/assets/logos/mux-logo-dark.svg?react";
@@ -756,7 +757,8 @@ const ProjectSidebarInner: React.FC<ProjectSidebarProps> = ({
         >
           {!collapsed && (
             <>
-              <div className="border-dark flex items-center justify-between border-b py-3 pr-3 pl-4">
+              <div className="border-dark flex flex-col border-b py-3 pr-3 pl-4">
+                <div className="flex items-center justify-between">
                 <div className="flex min-w-0 items-center gap-2">
                   <button
                     onClick={handleOpenMuxChat}
@@ -783,6 +785,10 @@ const ProjectSidebarInner: React.FC<ProjectSidebarProps> = ({
                   <span className="text-base leading-none">+</span>
                   <span>Add Project</span>
                 </button>
+                </div>
+                <span className="text-[10px] text-muted-foreground mt-1 tracking-wide">
+                  {VERSION.git_describe ?? "(dev)"}
+                </span>
               </div>
               <div className="flex-1 overflow-y-auto">
                 {visibleProjectPaths.length === 0 ? (
