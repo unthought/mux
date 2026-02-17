@@ -6,6 +6,12 @@ export interface PromptResolver {
   resolve: (result: acpSchema.PromptResponse) => void;
   reject: (error: Error) => void;
   messageId: string;
+  /**
+   * Only bind this resolver to a stream-start whose historySequence is strictly
+   * greater than this value. This prevents mis-correlating with pre-existing
+   * in-flight streams from other producers.
+   */
+  minHistorySequence: number;
 }
 
 export interface SessionState {
@@ -24,6 +30,8 @@ export interface SessionState {
   firstPromptSent: boolean;
   /** Whether this session was created via newSession (true) or loadSession (false) */
   isNewSession: boolean;
+  /** Highest historySequence seen from any stream-start on this session */
+  lastSeenHistorySequence: number;
 }
 
 interface SessionStateInit {
@@ -58,6 +66,7 @@ export class SessionManager {
       caughtUp: false,
       firstPromptSent: false,
       isNewSession: state.isNewSession,
+      lastSeenHistorySequence: -1,
     };
 
     this.sessions.set(sessionId, nextState);
@@ -109,7 +118,17 @@ export class SessionManager {
     session.promptResolver = undefined;
   }
 
-  updatePromptMessageId(sessionId: string, messageId: string): void {
+  /**
+   * Try to bind a stream-start's messageId to the active prompt resolver.
+   *
+   * Correlation uses two guards:
+   *   1. historySequence — only bind if the stream-start's sequence is strictly
+   *      greater than the one recorded when the prompt was created, which
+   *      filters out pre-existing in-flight streams from other producers.
+   *   2. First-write-wins — once a messageId is bound, subsequent stream-starts
+   *      don't overwrite it.
+   */
+  updatePromptMessageId(sessionId: string, messageId: string, historySequence: number): void {
     assert(sessionId.length > 0, "sessionId must be non-empty");
     assert(messageId.length > 0, "messageId must be non-empty");
 
@@ -118,15 +137,29 @@ export class SessionManager {
       return;
     }
 
-    // Only bind to the first stream-start for this prompt. If another
-    // producer's stream-start arrives first (e.g. from another client or a
-    // queued run), we'd mis-correlate. First-write-wins ensures subsequent
-    // stream-starts don't overwrite the bound messageId.
+    // First-write-wins: don't overwrite once bound.
     if (session.promptResolver.messageId.length > 0) {
       return;
     }
 
+    // Only bind to stream-starts with a sequence strictly after the prompt
+    // was created — this skips pre-existing in-flight streams.
+    if (historySequence <= session.promptResolver.minHistorySequence) {
+      return;
+    }
+
     session.promptResolver.messageId = messageId;
+  }
+
+  /** Track the latest historySequence seen for a session. */
+  updateLastSeenHistorySequence(sessionId: string, historySequence: number): void {
+    const session = this.sessions.get(sessionId);
+    if (!session) {
+      return;
+    }
+    if (historySequence > session.lastSeenHistorySequence) {
+      session.lastSeenHistorySequence = historySequence;
+    }
   }
 
   /** Update config for a session */

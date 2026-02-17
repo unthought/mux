@@ -237,11 +237,17 @@ export class MuxAcpAgent implements AcpAgent {
       );
     }
 
+    // Snapshot the latest historySequence before sending so the resolver only
+    // binds to stream-starts with a strictly higher sequence — this filters
+    // out pre-existing in-flight streams from other producers.
+    const minHistorySequence = session.lastSeenHistorySequence;
+
     const promptPromise = new Promise<acpSchema.PromptResponse>((resolve, reject) => {
       this.sessionManager.setPromptResolver(params.sessionId, {
         resolve,
         reject,
         messageId: "",
+        minHistorySequence,
       });
     });
 
@@ -752,11 +758,21 @@ export class MuxAcpAgent implements AcpAgent {
       session.caughtUp = true;
     }
 
-    // Bind the prompt resolver to the first non-replay stream-start for this
-    // workspace. updatePromptMessageId uses first-write-wins, so a second
-    // stream-start won't overwrite the bound messageId.
+    // Track history sequence for all stream-starts (replay or not) so the
+    // prompt resolver can use it for correlation.
+    if (event.type === "stream-start") {
+      this.sessionManager.updateLastSeenHistorySequence(workspaceId, event.historySequence);
+    }
+
+    // Bind the prompt resolver to the first non-replay stream-start whose
+    // historySequence exceeds the snapshot taken when the prompt was created.
+    // This prevents mis-correlating with pre-existing in-flight streams.
     if (event.type === "stream-start" && !event.replay) {
-      this.sessionManager.updatePromptMessageId(workspaceId, event.messageId);
+      this.sessionManager.updatePromptMessageId(
+        workspaceId,
+        event.messageId,
+        event.historySequence
+      );
     }
 
     for (const update of translateMuxEvent(event)) {
