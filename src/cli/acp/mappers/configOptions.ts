@@ -15,7 +15,7 @@ const ACP_SELECTABLE_MODES = ["exec", "plan"] as const;
 
 type ACPSelectableMode = (typeof ACP_SELECTABLE_MODES)[number];
 
-const ACP_MODES: ReadonlyArray<schema.SessionMode> = [
+const ACP_MODES: readonly schema.SessionMode[] = [
   {
     id: "exec",
     name: "Exec",
@@ -31,7 +31,7 @@ const ACP_MODES: ReadonlyArray<schema.SessionMode> = [
 const BASE_MODEL_OPTIONS = buildBaseModelOptions();
 const BASE_MODEL_INFOS = buildBaseModelInfos();
 
-function buildBaseModelOptions(): Array<schema.SessionConfigSelectOption> {
+function buildBaseModelOptions(): schema.SessionConfigSelectOption[] {
   const uniqueById = new Map<string, schema.SessionConfigSelectOption>();
   for (const knownModel of Object.values(KNOWN_MODELS)) {
     uniqueById.set(knownModel.id, {
@@ -44,7 +44,7 @@ function buildBaseModelOptions(): Array<schema.SessionConfigSelectOption> {
   return [...uniqueById.values()].sort((a, b) => a.name.localeCompare(b.name));
 }
 
-function buildBaseModelInfos(): Array<schema.ModelInfo> {
+function buildBaseModelInfos(): schema.ModelInfo[] {
   const uniqueById = new Map<string, schema.ModelInfo>();
   for (const knownModel of Object.values(KNOWN_MODELS)) {
     uniqueById.set(knownModel.id, {
@@ -57,8 +57,8 @@ function buildBaseModelInfos(): Array<schema.ModelInfo> {
 }
 
 function withCurrentModelOption(currentModelId: string): {
-  modelOptions: Array<schema.SessionConfigSelectOption>;
-  modelInfos: Array<schema.ModelInfo>;
+  modelOptions: schema.SessionConfigSelectOption[];
+  modelInfos: schema.ModelInfo[];
 } {
   assert(currentModelId.trim().length > 0, "currentModelId must be non-empty");
 
@@ -82,7 +82,7 @@ function withCurrentModelOption(currentModelId: string): {
   };
 }
 
-function buildThinkingOptions(): Array<schema.SessionConfigSelectOption> {
+function buildThinkingOptions(): schema.SessionConfigSelectOption[] {
   return THINKING_LEVELS.map((level) => ({
     name: level,
     value: level,
@@ -128,7 +128,7 @@ export function resolveThinkingLevel(
   return fallback;
 }
 
-export function buildAvailableModes(): Array<schema.SessionMode> {
+export function buildAvailableModes(): schema.SessionMode[] {
   return [...ACP_MODES];
 }
 
@@ -147,7 +147,7 @@ export function buildModelState(state: SessionState): schema.SessionModelState {
   };
 }
 
-export function buildConfigOptions(state: SessionState): Array<schema.SessionConfigOption> {
+export function buildConfigOptions(state: SessionState): schema.SessionConfigOption[] {
   const models = withCurrentModelOption(state.modelId);
 
   return [

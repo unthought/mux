@@ -49,7 +49,7 @@ function resolveMuxMetaRecord(
     return undefined;
   }
 
-  const nested = meta["mux"];
+  const nested = meta.mux;
   if (isRecord(nested)) {
     return nested;
   }
@@ -98,7 +98,7 @@ export function parseMuxMeta(meta: Record<string, unknown> | null | undefined): 
     parsed.thinkingLevel = parsedThinking;
   }
 
-  const runtimeConfigRaw = muxRecord["runtimeConfig"];
+  const runtimeConfigRaw = muxRecord.runtimeConfig;
   if (runtimeConfigRaw != null) {
     const runtimeConfigResult = RuntimeConfigSchema.safeParse(runtimeConfigRaw);
     if (!runtimeConfigResult.success) {

@@ -2,7 +2,7 @@ import type { AgentMode } from "@/common/types/mode";
 import type { ThinkingLevel } from "@/common/types/thinking";
 import assert from "@/common/utils/assert";
 
-export type SessionState = {
+export interface SessionState {
   sessionId: string;
   workspaceId: string;
   projectPath: string;
@@ -10,7 +10,7 @@ export type SessionState = {
   modelId: string;
   thinkingLevel: ThinkingLevel;
   activePromptAbort?: AbortController;
-};
+}
 
 export class SessionStateMap {
   private readonly states = new Map<string, SessionState>();

@@ -3,10 +3,7 @@ import type * as schema from "@agentclientprotocol/sdk";
 import type { RouterClient } from "@orpc/server";
 import { isCaughtUpMessage } from "@/common/orpc/types";
 import type { AppRouter } from "@/node/orpc/router";
-import {
-  createUpdateMappingState,
-  mapWorkspaceChatEventToAcp,
-} from "./mappers/updates";
+import { createUpdateMappingState, mapWorkspaceChatEventToAcp } from "./mappers/updates";
 import type { SessionState } from "./sessionState";
 
 interface PumpOnChatToAcpUpdatesOptions {

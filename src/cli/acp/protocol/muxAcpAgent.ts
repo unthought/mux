@@ -48,7 +48,7 @@ function buildAgentVersion(): string {
   return gitDescribe ?? gitCommit ?? "unknown";
 }
 
-function combineAbortSignals(signals: ReadonlyArray<AbortSignal>): CombinedSignalHandle {
+function combineAbortSignals(signals: readonly AbortSignal[]): CombinedSignalHandle {
   const controller = new AbortController();
 
   const callbacks = signals.map((signal) => {
@@ -141,7 +141,7 @@ export class MuxAcpAgent implements Agent {
   }
 
   private buildSessionStatePayload(session: SessionState): {
-    configOptions: Array<schema.SessionConfigOption>;
+    configOptions: schema.SessionConfigOption[];
     modes: schema.SessionModeState;
     models?: schema.SessionModelState;
   } {
@@ -187,6 +187,7 @@ export class MuxAcpAgent implements Agent {
     }
   }
 
+  // eslint-disable-next-line @typescript-eslint/require-await -- Agent interface requires Promise return
   async initialize(_params: schema.InitializeRequest): Promise<schema.InitializeResponse> {
     const sessionCapabilities: schema.SessionCapabilities = {};
     if (this.options.unstable) {
@@ -399,6 +400,7 @@ export class MuxAcpAgent implements Agent {
     };
   }
 
+  // eslint-disable-next-line @typescript-eslint/require-await -- Agent interface requires Promise return
   async authenticate(_params: schema.AuthenticateRequest): Promise<schema.AuthenticateResponse> {
     return {};
   }

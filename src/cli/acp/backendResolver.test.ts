@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-floating-promises -- bun mock.module() is synchronous */
 import { afterAll, afterEach, beforeEach, describe, expect, it, mock, vi } from "bun:test";
 
 const getMuxHomeMock = vi.fn(() => "/tmp/mux-home");
@@ -9,6 +10,7 @@ const startEmbeddedServerMock =
 const logDebugMock = vi.fn();
 
 class MockServerLockfile {
+  // eslint-disable-next-line @typescript-eslint/no-empty-function -- mock class
   constructor(_muxHome: string) {}
 
   read(): Promise<{ baseUrl: string; token: string } | null> {
@@ -34,6 +36,7 @@ mock.module("@/node/services/log", () => ({
   },
 }));
 
+// eslint-disable-next-line no-restricted-syntax -- dynamic import required: mocks must be registered before module loads
 const { resolveBackend } = await import("./backendResolver");
 
 const ORIGINAL_SERVER_URL = process.env.MUX_SERVER_URL;

@@ -92,6 +92,7 @@ describe("buildConfigOptions", () => {
     }
 
     expect(modelOption.options).toEqual(
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-argument -- vitest matcher typing
       expect.arrayContaining([
         expect.objectContaining({
           value: "custom:my-model",

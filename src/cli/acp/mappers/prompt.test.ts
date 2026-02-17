@@ -4,7 +4,7 @@ import { extractPromptText } from "./prompt";
 
 describe("extractPromptText", () => {
   it("extracts text from a simple text message", () => {
-    const prompt: Array<schema.ContentBlock> = [
+    const prompt: schema.ContentBlock[] = [
       {
         type: "text",
         text: "Implement ACP tests",
@@ -15,7 +15,7 @@ describe("extractPromptText", () => {
   });
 
   it("concatenates multiple content blocks with spacing", () => {
-    const prompt: Array<schema.ContentBlock> = [
+    const prompt: schema.ContentBlock[] = [
       {
         type: "text",
         text: "First block",

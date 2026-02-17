@@ -25,7 +25,7 @@ function contentBlockToText(block: schema.ContentBlock): string {
     case "text":
       return block.text;
     case "resource_link": {
-      const title = block.title?.trim() || block.name;
+      const title = block.title?.trim() ?? block.name;
       return `Referenced resource: ${title} (${block.uri})`;
     }
     case "resource": {
@@ -44,7 +44,7 @@ function contentBlockToText(block: schema.ContentBlock): string {
   }
 }
 
-export function extractPromptText(promptBlocks: Array<schema.ContentBlock>): string {
+export function extractPromptText(promptBlocks: schema.ContentBlock[]): string {
   const lines = promptBlocks
     .map(contentBlockToText)
     .map((line) => line.trim())
