@@ -717,9 +717,10 @@ export class MuxAcpAgent implements AcpAgent {
         }
 
         if (!session.abortController.signal.aborted && !this.deps.conn.signal.aborted) {
-          this.rejectPrompt(
+          // Subscription dropped — force-reject any pending prompt regardless
+          // of message ID correlation (the entire stream is gone).
+          this.forceRejectActivePrompt(
             workspaceId,
-            undefined,
             new Error(`workspace.onChat ended unexpectedly for ${workspaceId}`)
           );
         }
@@ -729,9 +730,8 @@ export class MuxAcpAgent implements AcpAgent {
         }
 
         this.deps.log("workspace.onChat subscription failed", workspaceId, error);
-        this.rejectPrompt(
+        this.forceRejectActivePrompt(
           workspaceId,
-          undefined,
           new Error(`workspace.onChat failed: ${this.describeUnknownError(error)}`)
         );
       }
@@ -752,10 +752,10 @@ export class MuxAcpAgent implements AcpAgent {
       session.caughtUp = true;
     }
 
-    // Only bind a prompt resolver to a stream-start after the initial replay
-    // is complete (caught-up). This prevents mis-correlating the resolver with
-    // a stream that was already in-flight before our sendMessage call.
-    if (event.type === "stream-start" && !event.replay && session.caughtUp) {
+    // Bind the prompt resolver to the first non-replay stream-start for this
+    // workspace. updatePromptMessageId uses first-write-wins, so a second
+    // stream-start won't overwrite the bound messageId.
+    if (event.type === "stream-start" && !event.replay) {
       this.sessionManager.updatePromptMessageId(workspaceId, event.messageId);
     }
 
@@ -818,6 +818,23 @@ export class MuxAcpAgent implements AcpAgent {
     }
 
     if (!this.matchesPromptMessage(promptResolver.messageId, messageId)) {
+      return;
+    }
+
+    this.sessionManager.clearPromptResolver(sessionId);
+    promptResolver.reject(error);
+  }
+
+  /**
+   * Unconditionally reject the active prompt for a session, bypassing message
+   * ID correlation. Used for subscription-level failures (onChat dropped or
+   * errored) where the entire stream is gone and any pending prompt must fail.
+   */
+  private forceRejectActivePrompt(sessionId: string, error: Error): void {
+    const session = this.sessionManager.getSession(sessionId);
+    const promptResolver = session?.promptResolver;
+
+    if (!promptResolver) {
       return;
     }
 
