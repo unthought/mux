@@ -208,6 +208,7 @@ describe("createWorkspaceBackedSession", () => {
       sessionId: "workspace-created",
       workspaceId: "workspace-created",
       projectPath: "/repo",
+      namedWorkspacePath: "/tmp/project/.mux/workspace-1",
       modeId: "plan",
       modelId: resolveModelAlias("sonnet"),
       thinkingLevel: "high",

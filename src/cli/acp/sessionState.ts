@@ -10,6 +10,9 @@ export interface SessionState {
   sessionId: string;
   workspaceId: string;
   projectPath: string;
+  /** Named worktree path (e.g., ~/.mux/src/project/branch). Accepted as an
+   *  alternative cwd alongside projectPath for ownership checks. */
+  namedWorkspacePath: string;
   modeId: AgentMode;
   modelId: string;
   thinkingLevel: ThinkingLevel;

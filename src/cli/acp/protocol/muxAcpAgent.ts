@@ -26,6 +26,11 @@ import {
 import { SessionStateMap, type SessionState } from "../sessionState";
 import { pumpOnChatToAcpUpdates } from "../streamPump";
 
+/** Check if a session's project path or named worktree path matches the given cwd. */
+function sessionMatchesCwd(session: SessionState, cwd: string): boolean {
+  return session.projectPath === cwd || session.namedWorkspacePath === cwd;
+}
+
 interface MuxAcpAgentOptions {
   unstable: boolean;
 }
@@ -253,7 +258,7 @@ export class MuxAcpAgent implements Agent {
   async loadSession(params: schema.LoadSessionRequest): Promise<schema.LoadSessionResponse> {
     const existingSession = this.sessions.get(params.sessionId);
     if (existingSession) {
-      if (existingSession.projectPath !== params.cwd) {
+      if (!sessionMatchesCwd(existingSession, params.cwd)) {
         throw new Error(
           `Session ${params.sessionId} already loaded for ${existingSession.projectPath}, requested ${params.cwd}`
         );
@@ -298,7 +303,7 @@ export class MuxAcpAgent implements Agent {
 
     const existingSession = this.sessions.get(params.sessionId);
     if (existingSession) {
-      if (existingSession.projectPath !== params.cwd) {
+      if (!sessionMatchesCwd(existingSession, params.cwd)) {
         throw new Error(
           `Session ${params.sessionId} already loaded for ${existingSession.projectPath}, requested ${params.cwd}`
         );

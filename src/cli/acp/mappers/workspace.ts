@@ -178,6 +178,7 @@ function buildSessionState(params: BuildSessionStateParams): SessionState {
     sessionId: params.sessionId,
     workspaceId: params.workspaceId,
     projectPath: params.projectPath,
+    namedWorkspacePath: params.metadata.namedWorkspacePath,
     modeId,
     modelId,
     thinkingLevel,
@@ -351,7 +352,10 @@ export async function listWorkspaceBackedSessions(
   const allWorkspaces = await client.workspace.list();
 
   const filtered = params.cwd
-    ? allWorkspaces.filter((workspace) => workspace.projectPath === params.cwd)
+    ? allWorkspaces.filter(
+        (workspace) =>
+          workspace.projectPath === params.cwd || workspace.namedWorkspacePath === params.cwd
+      )
     : allWorkspaces;
 
   const sorted = [...filtered].sort((left, right) => {

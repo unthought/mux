@@ -7,6 +7,7 @@ function makeState(overrides: Partial<SessionState> = {}): SessionState {
     sessionId: overrides.sessionId ?? "session-1",
     workspaceId: overrides.workspaceId ?? "workspace-1",
     projectPath: overrides.projectPath ?? "/tmp/project",
+    namedWorkspacePath: overrides.namedWorkspacePath ?? "/tmp/worktree/session-1",
     modeId: overrides.modeId ?? "exec",
     modelId: overrides.modelId ?? "anthropic:claude-opus-4-6",
     thinkingLevel: overrides.thinkingLevel ?? "off",
