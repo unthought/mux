@@ -255,6 +255,45 @@ describe("MemoryWriterPolicy", () => {
     });
   });
 
+  it("passes model + thinking through the resolver pipeline", async () => {
+    await withTempSessionsDir(async (sessionsDir) => {
+      let resolvedModelString: string | undefined;
+      let resolvedThinkingLevel: string | undefined;
+
+      const policy = new MemoryWriterPolicy(
+        createTestConfig({
+          sessionsDir,
+          interval: 1,
+          configOverrides: {
+            agentAiDefaults: {
+              system1_memory_writer: {
+                modelString: "xai:grok-4-1-fast",
+                thinkingLevel: "high",
+              },
+            },
+          },
+        }),
+        {
+          getHistoryFromLatestBoundary: (): Promise<
+            { success: true; data: MuxMessage[] } | { success: false; error: string }
+          > => Promise.resolve({ success: true, data: [] }),
+        },
+        (modelString, thinkingLevel) => {
+          resolvedModelString = modelString;
+          resolvedThinkingLevel = thinkingLevel;
+          return Promise.resolve(undefined);
+        }
+      );
+
+      await policy.onAssistantStreamEnd(
+        createContext({ messageId: "msg_1", modelString: "openai:gpt-5.1-codex-mini" })
+      );
+
+      expect(resolvedModelString).toBe("xai:grok-4-1-fast");
+      expect(resolvedThinkingLevel).toBe("high");
+    });
+  });
+
   it("skips when System1 is disabled", async () => {
     await withTempSessionsDir(async (sessionsDir) => {
       let getHistoryCalls = 0;

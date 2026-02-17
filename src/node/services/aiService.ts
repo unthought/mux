@@ -221,17 +221,25 @@ export class AIService extends EventEmitter {
     this.memoryWriterPolicy = new MemoryWriterPolicy(
       this.config,
       this.historyService,
-      async (modelStringToCreate, muxProviderOptions) => {
-        const created = await this.createModel(modelStringToCreate, muxProviderOptions);
+      async (modelStringToCreate, thinkingLevelToCreate, muxProviderOptions) => {
+        const created = await this.providerModelFactory.resolveAndCreateModel(
+          modelStringToCreate,
+          thinkingLevelToCreate,
+          muxProviderOptions
+        );
         if (!created.success) {
           log.debug("[system1][memory] Failed to create model", {
             modelString: modelStringToCreate,
+            thinkingLevel: thinkingLevelToCreate,
             error: created.error,
           });
           return undefined;
         }
 
-        return created.data;
+        return {
+          model: created.data.model,
+          effectiveModelString: created.data.effectiveModelString,
+        };
       }
     );
     void this.ensureSessionsDir();

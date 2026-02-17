@@ -103,6 +103,96 @@ describe("system1MemoryWriter", () => {
     }
   });
 
+  it("keeps conversation events JSON within budget when latest event is oversized", async () => {
+    const runtime = createRuntime({ type: "local", srcBaseDir: process.cwd() });
+
+    const projectDir = await fs.mkdtemp(path.join(os.tmpdir(), "system1-memory-project-"));
+    const muxRoot = await fs.mkdtemp(path.join(os.tmpdir(), "system1-memory-root-"));
+
+    const previousMuxRoot = process.env.MUX_ROOT;
+    process.env.MUX_ROOT = muxRoot;
+
+    try {
+      await fs.writeFile(path.join(muxRoot, "AGENTS.md"), "# Global\n", "utf8");
+      await fs.writeFile(path.join(projectDir, "AGENTS.md"), "# Agents\n", "utf8");
+
+      const { memoriesDir, memoryPath } = getMemoryFilePathForProject(projectDir);
+      await fs.mkdir(memoriesDir, { recursive: true });
+      await fs.writeFile(memoryPath, "seed", "utf8");
+
+      // Deliberately exceed the 80k event JSON budget with a single newest event.
+      const oversizedText = "X".repeat(220_000);
+      const history: MuxMessage[] = [
+        {
+          id: "u1",
+          role: "user",
+          parts: [{ type: "text", text: oversizedText }],
+          metadata: { historySequence: 1 },
+        },
+      ];
+
+      const result = await runSystem1WriteProjectMemories({
+        runtime,
+        agentDiscoveryPath: projectDir,
+        runtimeTempDir: os.tmpdir(),
+        model: {} as unknown as LanguageModel,
+        modelString: "openai:gpt-5.1-codex-mini",
+        providerOptions: {},
+        workspaceId: "ws_1",
+        workspaceName: "main",
+        triggerMessageId: "assistant-test",
+        projectPath: projectDir,
+        workspacePath: projectDir,
+        history,
+        timeoutMs: 5_000,
+        generateTextImpl: async (args) => {
+          const messages = (args as { messages?: unknown }).messages as
+            | Array<{ content?: unknown }>
+            | undefined;
+          const userMessage = messages?.[0]?.content;
+          expect(typeof userMessage).toBe("string");
+
+          const marker = "Conversation events (JSON):\n";
+          const markerIndex = (userMessage as string).indexOf(marker);
+          expect(markerIndex).toBeGreaterThanOrEqual(0);
+
+          const eventsJson = (userMessage as string).slice(markerIndex + marker.length);
+          expect(eventsJson.length).toBeLessThanOrEqual(80_000);
+
+          const parsedEvents = JSON.parse(eventsJson) as Array<Record<string, unknown>>;
+          expect(Array.isArray(parsedEvents)).toBe(true);
+          expect(parsedEvents.length).toBeGreaterThan(0);
+
+          const firstEvent = parsedEvents[0] ?? {};
+          const firstEventText = firstEvent.text;
+          expect(typeof firstEventText).toBe("string");
+          expect((firstEventText as string).length).toBeLessThan(oversizedText.length);
+
+          const tools = (args as { tools?: unknown }).tools as Record<string, unknown> | undefined;
+          expect(tools && "memory_write" in tools).toBe(true);
+
+          const writeTool = tools!.memory_write as {
+            execute: (input: unknown, options: unknown) => Promise<unknown>;
+          };
+
+          await writeTool.execute({ old_string: "seed", new_string: "updated" }, {});
+          return { finishReason: "stop" };
+        },
+      });
+
+      expect(result).toEqual({ finishReason: "stop", timedOut: false });
+      expect(await fs.readFile(memoryPath, "utf8")).toBe("updated");
+    } finally {
+      if (previousMuxRoot === undefined) {
+        delete process.env.MUX_ROOT;
+      } else {
+        process.env.MUX_ROOT = previousMuxRoot;
+      }
+      await fs.rm(projectDir, { recursive: true, force: true });
+      await fs.rm(muxRoot, { recursive: true, force: true });
+    }
+  });
+
   it("retries once with a reminder if the model does not call memory_write", async () => {
     const runtime = createRuntime({ type: "local", srcBaseDir: process.cwd() });
 

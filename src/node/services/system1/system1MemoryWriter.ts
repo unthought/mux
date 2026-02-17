@@ -160,6 +160,64 @@ function buildMemoryWriterEvents(history: MuxMessage[]): MemoryWriterEvent[] {
   return events;
 }
 
+function truncateTextForBudget(value: string, maxChars: number): string {
+  assert(Number.isInteger(maxChars) && maxChars >= 0, "maxChars must be a non-negative integer");
+
+  if (value.length <= maxChars) {
+    return value;
+  }
+
+  const suffix = "… [truncated for memory-writer budget]";
+  if (maxChars <= suffix.length) {
+    return suffix.slice(0, maxChars);
+  }
+
+  return `${value.slice(0, maxChars - suffix.length)}${suffix}`;
+}
+
+function clampNewestEventToCharBudget(
+  event: MemoryWriterEvent,
+  maxChars: number
+): MemoryWriterEvent[] {
+  const baseEvent: MemoryWriterEvent = {
+    historySequence: event.historySequence,
+    role: event.role,
+  };
+
+  const eventOverhead = JSON.stringify([{ ...baseEvent, text: "" }]).length;
+  const textBudget = Math.max(0, maxChars - eventOverhead);
+
+  const candidates: MemoryWriterEvent[][] = [
+    [
+      {
+        ...baseEvent,
+        // Keep at least a bounded excerpt of the newest event's text, but strip
+        // tool payloads which are usually the dominant source of JSON bloat.
+        text:
+          typeof event.text === "string"
+            ? truncateTextForBudget(event.text, textBudget)
+            : "[omitted oversized event payload]",
+      },
+    ],
+    [{ ...baseEvent, text: "[omitted oversized event payload]" }],
+    [baseEvent],
+    [],
+  ];
+
+  for (const candidate of candidates) {
+    if (JSON.stringify(candidate).length <= maxChars) {
+      return candidate;
+    }
+  }
+
+  // Defensive fallback: [] should always fit any positive budget.
+  assert(
+    JSON.stringify([]).length <= maxChars,
+    "empty event list should fit within memory-writer char budget"
+  );
+  return [];
+}
+
 function trimToCharBudget(events: MemoryWriterEvent[], maxChars: number): MemoryWriterEvent[] {
   assert(Number.isInteger(maxChars) && maxChars > 0, "maxChars must be a positive integer");
 
@@ -174,7 +232,19 @@ function trimToCharBudget(events: MemoryWriterEvent[], maxChars: number): Memory
     startIndex += 1;
   }
 
-  return events.slice(-1);
+  const newestEvent = events[events.length - 1];
+  if (!newestEvent) {
+    return [];
+  }
+
+  // When a single newest event exceeds the budget, clamp that event itself so
+  // we still honor maxChars instead of returning an oversized payload.
+  const clamped = clampNewestEventToCharBudget(newestEvent, maxChars);
+  assert(
+    JSON.stringify(clamped).length <= maxChars,
+    "memory-writer events must stay within maxChars after trimming"
+  );
+  return clamped;
 }
 
 export async function runSystem1WriteProjectMemories(
@@ -255,6 +325,10 @@ export async function runSystem1WriteProjectMemories(
   // We prefer dropping older context over truncating newer context.
   const MAX_EVENTS_JSON_CHARS = 80_000;
   const trimmedEvents = trimToCharBudget(events, MAX_EVENTS_JSON_CHARS);
+  assert(
+    JSON.stringify(trimmedEvents).length <= MAX_EVENTS_JSON_CHARS,
+    "trimToCharBudget must keep conversation events JSON within MAX_EVENTS_JSON_CHARS"
+  );
 
   const userMessageParts = [
     `projectId: ${projectId}`,

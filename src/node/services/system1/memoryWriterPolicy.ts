@@ -7,12 +7,12 @@ import { enforceThinkingPolicy } from "@/common/utils/thinking/policy";
 import type { RuntimeConfig } from "@/common/types/runtime";
 import type { MuxProviderOptions } from "@/common/types/providerOptions";
 import { DEFAULT_TASK_SETTINGS, SYSTEM1_MEMORY_WRITER_LIMITS } from "@/common/types/tasks";
+import type { ThinkingLevel } from "@/common/types/thinking";
 
-import type { Config, ProviderConfig } from "@/node/config";
+import type { Config } from "@/node/config";
 import type { HistoryService } from "@/node/services/historyService";
 import { SessionFileManager } from "@/node/utils/sessionFile";
 import { log } from "@/node/services/log";
-import { resolveProviderCredentials } from "@/node/utils/providerRequirements";
 import { createRuntime } from "@/node/runtime/runtimeFactory";
 
 import type { LanguageModel } from "ai";
@@ -73,8 +73,6 @@ function coerceMemoryWriterSchedulingState(raw: unknown): MemoryWriterScheduling
     lastRunMessageId,
   };
 }
-const MUX_GATEWAY_SUPPORTED_PROVIDERS = new Set(["anthropic", "openai", "google", "xai"]);
-
 export interface MemoryWriterStreamContext {
   workspaceId: string;
   messageId: string;
@@ -89,10 +87,17 @@ export interface MemoryWriterStreamContext {
   system1Enabled: boolean;
 }
 
-export type CreateModelFn = (
+export type ResolveModelFn = (
   modelString: string,
+  thinkingLevel: ThinkingLevel,
   muxProviderOptions: MuxProviderOptions
-) => Promise<LanguageModel | undefined>;
+) => Promise<
+  | {
+      model: LanguageModel;
+      effectiveModelString: string;
+    }
+  | undefined
+>;
 
 export class MemoryWriterPolicy {
   private readonly stateByWorkspace = new Map<string, MemoryWriterSchedulingState>();
@@ -101,16 +106,16 @@ export class MemoryWriterPolicy {
   private readonly stateFileManager: SessionFileManager<MemoryWriterSchedulingState>;
 
   constructor(
-    private readonly config: Pick<
-      Config,
-      "getSessionDir" | "loadConfigOrDefault" | "loadProvidersConfig"
-    >,
+    private readonly config: Pick<Config, "getSessionDir" | "loadConfigOrDefault">,
     private readonly historyService: Pick<HistoryService, "getHistoryFromLatestBoundary">,
-    private readonly createModel: CreateModelFn
+    private readonly resolveModel: ResolveModelFn
   ) {
     assert(config, "MemoryWriterPolicy: config is required");
     assert(historyService, "MemoryWriterPolicy: historyService is required");
-    assert(typeof createModel === "function", "MemoryWriterPolicy: createModel must be a function");
+    assert(
+      typeof resolveModel === "function",
+      "MemoryWriterPolicy: resolveModel must be a function"
+    );
 
     this.stateFileManager = new SessionFileManager(config, MEMORY_WRITER_STATE_FILE_NAME);
   }
@@ -320,69 +325,37 @@ export class MemoryWriterPolicy {
 
       const cfg = this.config.loadConfigOrDefault();
 
-      const applyMuxGatewayToSystem1Model = (candidateModelString: string): string => {
-        const trimmedCandidate = candidateModelString.trim();
-        if (!trimmedCandidate) {
-          return "";
-        }
-        if (trimmedCandidate.startsWith("mux-gateway:")) {
-          return trimmedCandidate;
-        }
-
-        if (cfg.muxGatewayEnabled === false) {
-          return trimmedCandidate;
-        }
-
-        const enabledModels = cfg.muxGatewayModels ?? [];
-        if (!enabledModels.includes(trimmedCandidate)) {
-          return trimmedCandidate;
-        }
-
-        const colonIndex = trimmedCandidate.indexOf(":");
-        if (colonIndex === -1) {
-          return trimmedCandidate;
-        }
-
-        const provider = trimmedCandidate.slice(0, colonIndex);
-        if (!MUX_GATEWAY_SUPPORTED_PROVIDERS.has(provider)) {
-          return trimmedCandidate;
-        }
-
-        const providersConfig = this.config.loadProvidersConfig();
-        const gatewayConfig: ProviderConfig = providersConfig?.["mux-gateway"] ?? {};
-        const gatewayCreds = resolveProviderCredentials("mux-gateway", gatewayConfig);
-        if (!gatewayCreds.isConfigured || !gatewayCreds.couponCode) {
-          return trimmedCandidate;
-        }
-
-        const model = trimmedCandidate.slice(colonIndex + 1);
-        return `mux-gateway:${provider}/${model}`;
-      };
-
       const system1Defaults = cfg.agentAiDefaults?.[SYSTEM1_MEMORY_WRITER_AGENT_ID];
       const system1ModelOverride =
         typeof system1Defaults?.modelString === "string" ? system1Defaults.modelString.trim() : "";
       const system1ModelCandidate = system1ModelOverride || ctx.modelString;
-      const effectiveSystem1ModelString = applyMuxGatewayToSystem1Model(system1ModelCandidate);
+      const trimmedSystem1ModelCandidate = system1ModelCandidate.trim();
 
-      if (!effectiveSystem1ModelString) {
+      if (!trimmedSystem1ModelCandidate) {
         workspaceLog.debug("[system1][memory] Skipping memory writer (missing System1 model)");
         return;
       }
 
       const requestedThinkingLevel = system1Defaults?.thinkingLevel ?? "off";
       const effectiveThinkingLevel = enforceThinkingPolicy(
-        effectiveSystem1ModelString,
+        trimmedSystem1ModelCandidate,
         requestedThinkingLevel
       );
 
-      const model = await this.createModel(effectiveSystem1ModelString, ctx.muxProviderOptions);
-      if (!model) {
+      const resolvedModel = await this.resolveModel(
+        trimmedSystem1ModelCandidate,
+        effectiveThinkingLevel,
+        ctx.muxProviderOptions
+      );
+      if (!resolvedModel) {
         workspaceLog.debug("[system1][memory] Skipping memory writer (model unavailable)", {
-          system1Model: effectiveSystem1ModelString,
+          system1Model: trimmedSystem1ModelCandidate,
+          thinkingLevel: effectiveThinkingLevel,
         });
         return;
       }
+
+      const { model, effectiveModelString: effectiveSystem1ModelString } = resolvedModel;
 
       // Tool-only request; we don't need message history for provider persistence.
       const providerOptions = buildProviderOptions(
