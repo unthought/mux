@@ -3,6 +3,9 @@ import assert from "@/common/utils/assert";
 import { log, type LogLevel } from "@/node/services/log";
 import { getParseOptions } from "./argv";
 import { resolveBackend, type ResolveBackendOpts } from "./acp/backendResolver";
+import { createOrpcWsClient, type OrpcWsClientHandle } from "./acp/orpcClient";
+import { createAcpConnection } from "./acp/protocol/connection";
+import { MuxAcpAgent } from "./acp/protocol/muxAcpAgent";
 
 interface ACPCLIOptions extends ResolveBackendOpts {
   acpUnstable?: boolean;
@@ -40,25 +43,6 @@ function setLogLevel(level: string | undefined): void {
   throw new Error(`Invalid log level "${level}". Expected: error, warn, info, debug`);
 }
 
-function waitForStdinClose(): Promise<void> {
-  return new Promise((resolve) => {
-    if (process.stdin.destroyed || process.stdin.readableEnded) {
-      resolve();
-      return;
-    }
-
-    const handleStdinDone = () => {
-      process.stdin.off("end", handleStdinDone);
-      process.stdin.off("close", handleStdinDone);
-      resolve();
-    };
-
-    process.stdin.once("end", handleStdinDone);
-    process.stdin.once("close", handleStdinDone);
-    process.stdin.resume();
-  });
-}
-
 async function main(): Promise<number> {
   setLogLevel(options.logLevel);
 
@@ -73,12 +57,24 @@ async function main(): Promise<number> {
   assert(backend.baseUrl.length > 0, "Resolved backend must include baseUrl");
   assert(backend.wsUrl.length > 0, "Resolved backend must include wsUrl");
 
-  // Use stderr so this placeholder command does not interfere with future ACP stdio output on stdout.
+  // Emit lifecycle info to stderr so ACP protocol traffic remains exclusively on stdout.
   console.error(`[mux acp] using ${backend.kind} backend at ${backend.baseUrl}`);
 
   let exitCode = 0;
+  let clientHandle: OrpcWsClientHandle | null = null;
+
+  const closeClient = () => {
+    if (!clientHandle) {
+      return;
+    }
+
+    clientHandle.close();
+    clientHandle = null;
+  };
+
   const stopOnSignal = (signalCode: number) => {
     exitCode = signalCode;
+    closeClient();
     if (!process.stdin.destroyed) {
       process.stdin.destroy();
     }
@@ -90,11 +86,21 @@ async function main(): Promise<number> {
   process.once("SIGTERM", onSigterm);
 
   try {
-    // Task B will replace this with ACP protocol handling.
-    await waitForStdinClose();
+    clientHandle = createOrpcWsClient(backend.wsUrl, backend.token);
+
+    const connection = createAcpConnection(
+      (conn) =>
+        new MuxAcpAgent(conn, clientHandle!.client, {
+          unstable: Boolean(options.acpUnstable),
+        })
+    );
+
+    await connection.closed;
   } finally {
     process.off("SIGINT", onSigint);
     process.off("SIGTERM", onSigterm);
+
+    closeClient();
 
     if (backend.kind === "embedded") {
       await backend.close();
