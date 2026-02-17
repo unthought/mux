@@ -1,13 +1,13 @@
 import "../dom";
 
-import { act, waitFor } from "@testing-library/react";
+import { fireEvent, waitFor } from "@testing-library/react";
 
-import { updatePersistedState } from "@/browser/hooks/usePersistedState";
-import { getCriticEnabledKey, getCriticPromptKey } from "@/common/constants/storage";
+import { getCriticEnabledKey } from "@/common/constants/storage";
 import type { HistoryService } from "@/node/services/historyService";
 import type { MockAiRouterHandler, MockAiRouterRequest } from "@/node/services/mock/mockAiRouter";
 import { preloadTestModules } from "../../ipc/setup";
 import { createStreamCollector } from "../../ipc/streamCollector";
+import { shouldRunIntegrationTests } from "../../testUtils";
 import { createAppHarness, type AppHarness } from "../harness";
 
 function actorHandler(text: string): MockAiRouterHandler {
@@ -34,15 +34,64 @@ interface ServiceContainerWithHistory {
   historyService: HistoryService;
 }
 
+const describeIntegration = shouldRunIntegrationTests() ? describe : describe.skip;
+const CRITIC_PROMPT_PLACEHOLDER = "Critic prompt (optional)";
+
 function getHistoryService(app: AppHarness): HistoryService {
   return (app.env.services as unknown as ServiceContainerWithHistory).historyService;
 }
 
-async function waitMs(durationMs: number): Promise<void> {
-  await new Promise((resolve) => setTimeout(resolve, durationMs));
+async function findCriticPromptInput(app: AppHarness): Promise<HTMLInputElement> {
+  return waitFor(
+    () => {
+      const input = app.view.container.querySelector(
+        `input[placeholder="${CRITIC_PROMPT_PLACEHOLDER}"]`
+      ) as HTMLInputElement | null;
+      if (!input) {
+        throw new Error("Critic prompt input not found");
+      }
+      return input;
+    },
+    { timeout: 10_000 }
+  );
 }
 
-describe("Actor-Critic mode", () => {
+async function setCriticPromptFromUi(app: AppHarness, prompt: string): Promise<void> {
+  const promptInput = await findCriticPromptInput(app);
+  fireEvent.change(promptInput, { target: { value: prompt } });
+
+  await waitFor(
+    () => {
+      const updatedInput = app.view.container.querySelector(
+        `input[placeholder="${CRITIC_PROMPT_PLACEHOLDER}"]`
+      ) as HTMLInputElement | null;
+      if (!updatedInput) {
+        throw new Error("Critic prompt input disappeared after change");
+      }
+      expect(updatedInput.value).toBe(prompt);
+    },
+    { timeout: 5_000 }
+  );
+}
+
+async function stopStreamingFromUi(app: AppHarness): Promise<void> {
+  const stopButton = await waitFor(
+    () => {
+      const button = app.view.container.querySelector(
+        'button[aria-label="Stop streaming"]'
+      ) as HTMLButtonElement | null;
+      if (!button) {
+        throw new Error("Stop streaming button not found");
+      }
+      return button;
+    },
+    { timeout: 10_000 }
+  );
+
+  fireEvent.click(stopButton);
+}
+
+describeIntegration("Actor-Critic mode", () => {
   beforeAll(async () => {
     await preloadTestModules();
   });
@@ -121,9 +170,6 @@ describe("Actor-Critic mode", () => {
     const app = await createAppHarness({ branchPrefix: "critic-prompt" });
 
     const criticPrompt = "Focus on correctness and edge cases.";
-    act(() => {
-      updatePersistedState(getCriticPromptKey(app.workspaceId), criticPrompt);
-    });
 
     const criticRequests: MockAiRouterRequest[] = [];
     const router = app.env.services.aiService.getMockRouter();
@@ -141,6 +187,7 @@ describe("Actor-Critic mode", () => {
 
     try {
       await app.chat.send("/critic");
+      await setCriticPromptFromUi(app, criticPrompt);
       await app.chat.send("Review this implementation");
 
       await waitFor(
@@ -202,7 +249,7 @@ describe("Actor-Critic mode", () => {
         { timeout: 25_000 }
       );
 
-      await waitMs(2_000);
+      await app.chat.expectStreamComplete(20_000);
       expect(actorCalls).toBe(2);
     } finally {
       await app.dispose();
@@ -353,9 +400,6 @@ describe("Actor-Critic mode", () => {
     const app = await createAppHarness({ branchPrefix: "critic-context-recovery" });
 
     const criticPrompt = "Demand stronger invariants before approving.";
-    act(() => {
-      updatePersistedState(getCriticPromptKey(app.workspaceId), criticPrompt);
-    });
 
     const criticRequests: MockAiRouterRequest[] = [];
     let criticCalls = 0;
@@ -392,6 +436,7 @@ describe("Actor-Critic mode", () => {
 
     try {
       await app.chat.send("/critic");
+      await setCriticPromptFromUi(app, criticPrompt);
       await app.chat.send("Build a resilient parser");
 
       await app.chat.expectTranscriptContains("Mock compaction summary:", 90_000);
@@ -511,10 +556,9 @@ describe("Actor-Critic mode", () => {
       expect(actorRequests[1]?.latestUserText.toLowerCase()).toContain("queued follow-up");
       await app.chat.expectTranscriptContains("Queued follow-up processed.", 40_000);
 
-      const interruptResult = await app.env.orpc.workspace.interruptStream({
-        workspaceId: app.workspaceId,
-      });
-      expect(interruptResult.success).toBe(true);
+      await stopStreamingFromUi(app);
+      const abortEvent = await collector.waitForEvent("stream-abort", 10_000);
+      expect(abortEvent).not.toBeNull();
       await app.chat.expectStreamComplete(10_000);
     } finally {
       collector.stop();
@@ -547,10 +591,7 @@ describe("Actor-Critic mode", () => {
       const criticStreamStart = await collector.waitForEventN("stream-start", 2, 20_000);
       expect(criticStreamStart).not.toBeNull();
 
-      const interruptResult = await app.env.orpc.workspace.interruptStream({
-        workspaceId: app.workspaceId,
-      });
-      expect(interruptResult.success).toBe(true);
+      await stopStreamingFromUi(app);
 
       const abortEvent = await collector.waitForEvent("stream-abort", 10_000);
       expect(abortEvent).not.toBeNull();
@@ -582,7 +623,7 @@ describe("Actor-Critic mode", () => {
       await app.chat.send("normal turn without critic mode");
       await app.chat.expectTranscriptContains("Actor only response.", 15_000);
 
-      await waitMs(2_000);
+      await app.chat.expectStreamComplete(15_000);
       expect(criticCalled).toBe(false);
       const criticMessages = app.view.container.querySelectorAll('[data-message-source="critic"]');
       expect(criticMessages.length).toBe(0);
