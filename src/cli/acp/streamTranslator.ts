@@ -153,43 +153,61 @@ export function translateMuxEvent(event: WorkspaceChatMessage): AcpSessionUpdate
 function translateReplayMessage(
   event: Extract<WorkspaceChatMessage, { type: "message" }>
 ): AcpSessionUpdate[] {
-  const text = extractReplayText(event);
-  if (text.length === 0) {
-    return [];
-  }
-
   if (event.role === "user") {
-    return toChunkUpdate("user_message_chunk", text);
+    const text = extractReplayText(event);
+    return text.length > 0 ? toChunkUpdate("user_message_chunk", text) : [];
   }
 
   if (event.role === "assistant") {
-    return toChunkUpdate("agent_message_chunk", text);
+    // Emit reasoning parts as thought chunks and text parts as message chunks
+    // so replay semantics match live streaming (which uses separate channels).
+    return extractReplayParts(event);
   }
 
   return [];
 }
 
-function extractReplayText(event: Extract<WorkspaceChatMessage, { type: "message" }>): string {
-  const textParts = event.parts
-    .flatMap((part) => {
-      if (part.type === "text") {
-        return [part.text];
-      }
-      if (part.type === "reasoning") {
-        return [part.text];
-      }
-      return [];
-    })
-    .map((text) => text.trim())
-    .filter((text) => text.length > 0);
+function extractReplayParts(
+  event: Extract<WorkspaceChatMessage, { type: "message" }>
+): AcpSessionUpdate[] {
+  const updates: AcpSessionUpdate[] = [];
 
-  if (textParts.length > 0) {
-    return textParts.join("\n\n");
+  if (Array.isArray(event.parts) && event.parts.length > 0) {
+    for (const part of event.parts) {
+      if (part.type === "reasoning" && part.text.length > 0) {
+        updates.push(...toChunkUpdate("agent_thought_chunk", part.text));
+      } else if (part.type === "text" && part.text.length > 0) {
+        updates.push(...toChunkUpdate("agent_message_chunk", part.text));
+      }
+    }
+  }
+
+  // Fallback for legacy messages that lack structured parts
+  if (updates.length === 0) {
+    const legacyContent = (event as unknown as { content?: unknown }).content;
+    if (typeof legacyContent === "string" && legacyContent.length > 0) {
+      updates.push(...toChunkUpdate("agent_message_chunk", legacyContent));
+    }
+  }
+
+  return updates;
+}
+
+function extractReplayText(event: Extract<WorkspaceChatMessage, { type: "message" }>): string {
+  if (Array.isArray(event.parts) && event.parts.length > 0) {
+    const textParts = event.parts
+      .filter((part) => part.type === "text")
+      .map((part) => part.text)
+      .filter((text) => text.length > 0);
+
+    if (textParts.length > 0) {
+      return textParts.join("\n\n");
+    }
   }
 
   const legacyContent = (event as unknown as { content?: unknown }).content;
   if (typeof legacyContent === "string") {
-    return legacyContent.trim();
+    return legacyContent;
   }
 
   return "";

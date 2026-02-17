@@ -118,6 +118,14 @@ export class SessionManager {
       return;
     }
 
+    // Only bind to the first stream-start for this prompt. If another
+    // producer's stream-start arrives first (e.g. from another client or a
+    // queued run), we'd mis-correlate. First-write-wins ensures subsequent
+    // stream-starts don't overwrite the bound messageId.
+    if (session.promptResolver.messageId.length > 0) {
+      return;
+    }
+
     session.promptResolver.messageId = messageId;
   }
 

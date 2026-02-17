@@ -752,7 +752,10 @@ export class MuxAcpAgent implements AcpAgent {
       session.caughtUp = true;
     }
 
-    if (event.type === "stream-start" && !event.replay) {
+    // Only bind a prompt resolver to a stream-start after the initial replay
+    // is complete (caught-up). This prevents mis-correlating the resolver with
+    // a stream that was already in-flight before our sendMessage call.
+    if (event.type === "stream-start" && !event.replay && session.caughtUp) {
       this.sessionManager.updatePromptMessageId(workspaceId, event.messageId);
     }
 
