@@ -1016,6 +1016,23 @@ const ProjectSidebarInner: React.FC<ProjectSidebarProps> = ({
                                 }
                               }
 
+                              // Build parent-child relationship maps for connector lines
+                              const childrenByParent = new Map<string, string[]>();
+                              const lastChildSet = new Set<string>();
+                              for (const ws of allWorkspaces) {
+                                if (ws.parentWorkspaceId) {
+                                  const siblings = childrenByParent.get(ws.parentWorkspaceId) ?? [];
+                                  siblings.push(ws.id);
+                                  childrenByParent.set(ws.parentWorkspaceId, siblings);
+                                }
+                              }
+                              // Mark last child in each group
+                              for (const [, children] of childrenByParent) {
+                                if (children.length > 0) {
+                                  lastChildSet.add(children[children.length - 1]);
+                                }
+                              }
+
                               const renderWorkspace = (
                                 metadata: FrontendWorkspaceMetadata,
                                 sectionId?: string,
@@ -1038,6 +1055,8 @@ const ProjectSidebarInner: React.FC<ProjectSidebarProps> = ({
                                   depth={depthByWorkspaceId[metadata.id] ?? 0}
                                   sectionId={sectionId}
                                   sectionColor={sectionColor}
+                                  hasChildren={childrenByParent.has(metadata.id)}
+                                  isLastChild={lastChildSet.has(metadata.id)}
                                 />
                               );
 
@@ -1290,7 +1309,7 @@ const ProjectSidebarInner: React.FC<ProjectSidebarProps> = ({
                                         }}
                                       />
                                       {isSectionExpanded && (
-                                        <div className="pb-1">
+                                        <div className="pb-1" style={{ backgroundColor: '#1e1e1e' }}>
                                           {sectionDrafts.map((draft) => renderDraft(draft))}
                                           {sectionWorkspaces.length > 0 ? (
                                             renderAgeTiers(

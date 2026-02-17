@@ -78,6 +78,10 @@ export interface WorkspaceListItemProps extends WorkspaceListItemBaseProps {
   onSelectWorkspace: (selection: WorkspaceSelection) => void;
   onArchiveWorkspace: (workspaceId: string, button: HTMLElement) => Promise<void>;
   onCancelCreation: (workspaceId: string) => Promise<void>;
+  /** Whether this workspace has child sub-agent workspaces */
+  hasChildren?: boolean;
+  /** Whether this is the last child in a parent-child group */
+  isLastChild?: boolean;
 }
 
 /** Props for draft (UI-only placeholder) items */
@@ -92,13 +96,13 @@ export interface DraftWorkspaceListItemProps extends WorkspaceListItemBaseProps 
 
 /** Container styles shared between workspace and draft items */
 const LIST_ITEM_BASE_CLASSES =
-  "py-1.5 pr-2 transition-all duration-150 text-[13px] relative flex gap-1 pl-5";
+  "py-1.5 pr-2 transition-all duration-150 text-[13px] relative flex gap-1 pl-6";
 
 /** Calculate left padding - always the same for dot alignment */
 function getItemPaddingLeft(_depth?: number): number {
   // Dots are always aligned at the same position.
   // Sub-agent text indentation is handled via gap/margin on the text column.
-  return 12;
+  return 16;
 }
 
 /** Selection/unread indicator bar (absolute positioned on left edge) */
@@ -349,6 +353,8 @@ function RegularWorkspaceListItemInner(props: WorkspaceListItemProps) {
     isRemoving: isRemovingProp,
     depth,
     sectionId,
+    hasChildren,
+    isLastChild,
     sectionColor,
     onSelectWorkspace,
     onArchiveWorkspace,
@@ -605,14 +611,26 @@ function RegularWorkspaceListItemInner(props: WorkspaceListItemProps) {
           />
         )}
         {/* Vertical connector line for sub-agents */}
-        {/* Vertical connector line for sub-agents - runs full height behind the dot */}
+        {/* Vertical connector line - parent draws line DOWN, children draw line from TOP */}
+        {hasChildren && !isSubAgent && (
+          <span
+            className="absolute bg-neutral-600"
+            style={{
+              left: `${paddingLeft + 6}px`,
+              top: '50%',
+              bottom: 0,
+              width: '1px',
+            }}
+            aria-hidden
+          />
+        )}
         {isSubAgent && (
           <span
             className="absolute bg-neutral-600"
             style={{
               left: `${paddingLeft + 6}px`,
               top: 0,
-              bottom: 0,
+              bottom: isLastChild ? '50%' : 0,
               width: '1px',
             }}
             aria-hidden
@@ -790,7 +808,8 @@ function RegularWorkspaceListItemInner(props: WorkspaceListItemProps) {
           <div
             className={cn(
               "grid min-w-0 grid-cols-[1fr_auto] items-center gap-1.5",
-              !hasSecondaryRow && "py-0.5"
+              !hasSecondaryRow && "py-0.5",
+              isSelected && !isDisabled && "bg-hover rounded px-1.5 -mx-1.5 py-0.5"
             )}
           >
             {isEditing ? (
@@ -813,7 +832,7 @@ function RegularWorkspaceListItemInner(props: WorkspaceListItemProps) {
                       "block truncate text-left text-[13px] transition-colors duration-200",
                       isSubAgent ? "text-muted-foreground" : "text-foreground font-medium",
                       !isDisabled && "cursor-pointer",
-                      isSelected && !isDisabled && "bg-hover rounded px-1.5 -mx-1.5"
+                      // selection pill is on the grid row, not individual text
                     )}
                     onDoubleClick={(e) => {
                       if (isDisabled) return;
