@@ -1,38 +1,17 @@
-import type { Agent as AcpAgent } from "@agentclientprotocol/sdk";
 import { Command } from "commander";
 import { Readable, Writable } from "node:stream";
 import assert from "@/common/utils/assert";
 import { detectCliEnvironment, getParseOptions } from "./argv";
-import { loadAcpSdk, type AcpSdk } from "./acp/acpSdk";
-import { discoverOrSpawnServer, type ServerConnection } from "./acp/serverDiscovery";
+import { MuxAcpAgent } from "./acp/MuxAcpAgent";
+import { loadAcpSdk } from "./acp/acpSdk";
 import { createOrpcWsClient } from "./acp/orpcWsClient";
+import { discoverOrSpawnServer, type ServerConnection } from "./acp/serverDiscovery";
 
 interface AcpCliOptions {
   serverUrl?: string;
   authToken?: string;
   unstable: boolean;
   logStderr: boolean;
-}
-
-function createPlaceholderAgent(acp: AcpSdk): AcpAgent {
-  return {
-    initialize: () =>
-      Promise.resolve({
-        protocolVersion: acp.PROTOCOL_VERSION,
-        agentInfo: {
-          name: "mux",
-          version: "0.1.0",
-        },
-        agentCapabilities: {},
-      }),
-    authenticate: () => Promise.resolve(undefined),
-    newSession: () =>
-      Promise.reject(acp.RequestError.internalError(undefined, "Not yet implemented")),
-    loadSession: () =>
-      Promise.reject(acp.RequestError.internalError(undefined, "Not yet implemented")),
-    prompt: () => Promise.reject(acp.RequestError.internalError(undefined, "Not yet implemented")),
-    cancel: () => Promise.resolve(undefined),
-  };
 }
 
 async function main(options: AcpCliOptions): Promise<void> {
@@ -92,7 +71,23 @@ async function main(options: AcpCliOptions): Promise<void> {
     const output = Writable.toWeb(process.stdout) as unknown as WritableStream<Uint8Array>;
     const stream = acp.ndJsonStream(output, input);
 
-    const connection = new acp.AgentSideConnection(() => createPlaceholderAgent(acp), stream);
+    const readyOrpcClient = orpcClient;
+    assert(
+      readyOrpcClient != null,
+      "oRPC client must be initialized before creating ACP connection"
+    );
+
+    const connection = new acp.AgentSideConnection(
+      (conn) =>
+        new MuxAcpAgent({
+          conn,
+          sdk: acp,
+          orpcClient: readyOrpcClient.client,
+          unstable: options.unstable,
+          log: logStderr,
+        }),
+      stream
+    );
     logStderr("ACP bridge established");
 
     process.on("SIGINT", () => {
