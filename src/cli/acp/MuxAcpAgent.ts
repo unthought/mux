@@ -16,6 +16,13 @@ const CONFIG_ID_AGENT_ID = "agentId";
 const CONFIG_ID_MODEL = "model";
 const CONFIG_ID_THINKING_LEVEL = "thinkingLevel";
 const AGENT_ID_PATTERN = /^[a-z0-9]+(?:[a-z0-9_-]*[a-z0-9])?$/;
+const UNSTABLE_SESSION_LIST_PAGE_SIZE = 50;
+const METHOD_SESSION_LIST = "session/list";
+const METHOD_SESSION_FORK = "session/fork";
+const METHOD_SESSION_RESUME = "session/resume";
+const METHOD_SESSION_SET_MODEL = "session/set_model";
+const METHOD_SESSION_INFO_UPDATE = "session/info_update";
+const METHOD_CANCEL_REQUEST = "$/cancel_request";
 
 interface ParsedMuxMeta {
   projectPath?: string;
@@ -61,13 +68,21 @@ export class MuxAcpAgent implements AcpAgent {
     );
 
     if (deps.unstable) {
-      deps.log("ACP unstable mode requested; unstable_* methods are intentionally not implemented");
+      deps.log("ACP unstable mode requested; unstable_* methods are enabled");
     }
   }
 
   // --- ACP Agent interface methods ---
 
   initialize(_params: acpSchema.InitializeRequest): Promise<acpSchema.InitializeResponse> {
+    const sessionCapabilities: acpSchema.SessionCapabilities | undefined = this.deps.unstable
+      ? {
+          list: {},
+          fork: {},
+          resume: {},
+        }
+      : undefined;
+
     return Promise.resolve({
       protocolVersion: this.deps.sdk.PROTOCOL_VERSION,
       agentInfo: {
@@ -76,6 +91,7 @@ export class MuxAcpAgent implements AcpAgent {
       },
       agentCapabilities: {
         loadSession: true,
+        ...(sessionCapabilities ? { sessionCapabilities } : {}),
       },
     });
   }
@@ -386,12 +402,293 @@ export class MuxAcpAgent implements AcpAgent {
     });
   }
 
-  extMethod(method: string, _params: Record<string, unknown>): Promise<Record<string, unknown>> {
-    return Promise.reject(this.deps.sdk.RequestError.methodNotFound(method));
+  async unstable_listSessions(
+    params: acpSchema.ListSessionsRequest
+  ): Promise<acpSchema.ListSessionsResponse> {
+    assert(params != null, "unstable_listSessions params are required");
+    this.assertUnstableEnabled(METHOD_SESSION_LIST);
+
+    const requestedCwd = normalizeNonEmptyString(params.cwd);
+    const startIndex = this.parseListCursor(params.cursor);
+
+    const workspaces = await this.deps.orpcClient.workspace.list({});
+    const filteredWorkspaces = requestedCwd
+      ? workspaces.filter(
+          (workspace) =>
+            workspace.namedWorkspacePath === requestedCwd || workspace.projectPath === requestedCwd
+        )
+      : workspaces;
+
+    const sortedWorkspaces = [...filteredWorkspaces].sort((left, right) => {
+      const createdAtSort = (right.createdAt ?? "").localeCompare(left.createdAt ?? "");
+      return createdAtSort !== 0 ? createdAtSort : left.id.localeCompare(right.id);
+    });
+
+    const page = sortedWorkspaces.slice(startIndex, startIndex + UNSTABLE_SESSION_LIST_PAGE_SIZE);
+    const sessions: acpSchema.SessionInfo[] = page.map((workspace) => ({
+      sessionId: workspace.id,
+      cwd: workspace.namedWorkspacePath,
+      title: workspace.title ?? workspace.name,
+      updatedAt: workspace.createdAt,
+      _meta: {
+        mux: {
+          projectPath: workspace.projectPath,
+          projectName: workspace.projectName,
+          runtimeType: workspace.runtimeConfig.type,
+          createdAt: workspace.createdAt,
+        },
+      },
+    }));
+
+    const nextCursor = startIndex + UNSTABLE_SESSION_LIST_PAGE_SIZE < sortedWorkspaces.length;
+
+    return {
+      sessions,
+      ...(nextCursor ? { nextCursor: String(startIndex + UNSTABLE_SESSION_LIST_PAGE_SIZE) } : {}),
+    };
   }
 
-  extNotification(method: string, _params: Record<string, unknown>): Promise<void> {
-    return Promise.reject(this.deps.sdk.RequestError.methodNotFound(method));
+  async unstable_forkSession(
+    params: acpSchema.ForkSessionRequest
+  ): Promise<acpSchema.ForkSessionResponse> {
+    assert(params != null, "unstable_forkSession params are required");
+    this.assertUnstableEnabled(METHOD_SESSION_FORK);
+
+    const sourceWorkspaceId = normalizeNonEmptyString(params.sessionId);
+    if (!sourceWorkspaceId) {
+      throw this.deps.sdk.RequestError.invalidParams(
+        undefined,
+        "session/fork requires a non-empty sessionId"
+      );
+    }
+
+    const sourceInfo = await this.deps.orpcClient.workspace.getInfo({
+      workspaceId: sourceWorkspaceId,
+    });
+    if (!sourceInfo) {
+      throw this.deps.sdk.RequestError.resourceNotFound(sourceWorkspaceId);
+    }
+
+    const forkResult = await this.deps.orpcClient.workspace.fork({
+      sourceWorkspaceId,
+    });
+
+    if (!forkResult.success) {
+      throw this.deps.sdk.RequestError.internalError(
+        undefined,
+        `workspace.fork failed: ${forkResult.error}`
+      );
+    }
+
+    const workspaceId = forkResult.metadata.id;
+    assert(workspaceId.length > 0, "workspace.fork must return a non-empty workspace ID");
+
+    const agentId = this.resolveAgentId(forkResult.metadata.agentId ?? sourceInfo.agentId);
+    const sourceAiSettings = sourceInfo.aiSettingsByAgent?.[agentId] ?? sourceInfo.aiSettings;
+    const forkedAiSettings =
+      forkResult.metadata.aiSettingsByAgent?.[agentId] ?? forkResult.metadata.aiSettings;
+    const model =
+      normalizeNonEmptyString(forkedAiSettings?.model ?? sourceAiSettings?.model) ??
+      this.defaultModel();
+    const thinkingLevel = this.resolveThinkingLevel(
+      forkedAiSettings?.thinkingLevel ?? sourceAiSettings?.thinkingLevel
+    );
+
+    await this.persistAiSettings(workspaceId, agentId, model, thinkingLevel);
+
+    this.sessionManager.createSession(workspaceId, {
+      workspaceId,
+      projectPath: forkResult.metadata.projectPath,
+      agentId,
+      model,
+      thinkingLevel,
+    });
+
+    this.subscribeToChat(workspaceId);
+
+    const modeOptions = await this.getModeOptions(forkResult.metadata.projectPath, workspaceId);
+
+    return {
+      sessionId: workspaceId,
+      configOptions: this.buildConfigOptions(modeOptions, {
+        agentId,
+        model,
+        thinkingLevel,
+      }),
+      modes: this.buildModes(modeOptions, agentId),
+    };
+  }
+
+  async unstable_resumeSession(
+    params: acpSchema.ResumeSessionRequest
+  ): Promise<acpSchema.ResumeSessionResponse> {
+    assert(params != null, "unstable_resumeSession params are required");
+    this.assertUnstableEnabled(METHOD_SESSION_RESUME);
+
+    return this.loadSession({
+      sessionId: params.sessionId,
+      cwd: params.cwd,
+      mcpServers: params.mcpServers ?? [],
+    });
+  }
+
+  async unstable_setSessionModel(params: acpSchema.SetSessionModelRequest): Promise<void> {
+    assert(params != null, "unstable_setSessionModel params are required");
+    this.assertUnstableEnabled(METHOD_SESSION_SET_MODEL);
+
+    const modelId = normalizeNonEmptyString(params.modelId);
+    if (!modelId) {
+      throw this.deps.sdk.RequestError.invalidParams(
+        undefined,
+        "session/set_model requires a non-empty modelId"
+      );
+    }
+
+    if (!this.knownModelIds().has(modelId)) {
+      throw this.deps.sdk.RequestError.invalidParams(undefined, `Unknown model option: ${modelId}`);
+    }
+
+    const session = this.sessionManager.getSession(params.sessionId);
+    if (!session) {
+      throw this.deps.sdk.RequestError.resourceNotFound(params.sessionId);
+    }
+
+    this.sessionManager.updateConfig(params.sessionId, { model: modelId });
+    await this.persistAiSettings(
+      session.workspaceId,
+      session.agentId,
+      modelId,
+      session.thinkingLevel
+    );
+  }
+
+  async extMethod(
+    method: string,
+    params: Record<string, unknown>
+  ): Promise<Record<string, unknown>> {
+    if (!this.deps.unstable) {
+      throw this.deps.sdk.RequestError.methodNotFound(method);
+    }
+
+    if (method !== METHOD_SESSION_INFO_UPDATE) {
+      throw this.deps.sdk.RequestError.methodNotFound(method);
+    }
+
+    const sessionId = normalizeNonEmptyString(params.sessionId);
+    if (!sessionId) {
+      throw this.deps.sdk.RequestError.invalidParams(
+        undefined,
+        "session/info_update requires a non-empty sessionId"
+      );
+    }
+
+    const title = this.readSessionInfoUpdateTitle(params);
+    if (title === undefined) {
+      throw this.deps.sdk.RequestError.invalidParams(
+        undefined,
+        "session/info_update requires a string title"
+      );
+    }
+
+    const info = await this.deps.orpcClient.workspace.getInfo({ workspaceId: sessionId });
+    if (!info) {
+      throw this.deps.sdk.RequestError.resourceNotFound(sessionId);
+    }
+
+    const result = await this.deps.orpcClient.workspace.updateTitle({
+      workspaceId: sessionId,
+      title,
+    });
+
+    if (!result.success) {
+      throw this.deps.sdk.RequestError.internalError(
+        undefined,
+        `workspace.updateTitle failed: ${result.error}`
+      );
+    }
+
+    return {};
+  }
+
+  async extNotification(method: string, params: Record<string, unknown>): Promise<void> {
+    if (!this.deps.unstable) {
+      throw this.deps.sdk.RequestError.methodNotFound(method);
+    }
+
+    if (method !== METHOD_CANCEL_REQUEST) {
+      return;
+    }
+
+    const sessionId = this.readCancelRequestSessionId(params);
+    if (!sessionId) {
+      this.deps.log("Ignoring $/cancel_request notification without a sessionId", params);
+      return;
+    }
+
+    const session = this.sessionManager.getSession(sessionId);
+    if (!session?.promptResolver) {
+      return;
+    }
+
+    await this.cancel({ sessionId });
+  }
+
+  private assertUnstableEnabled(method: string): void {
+    if (!this.deps.unstable) {
+      throw this.deps.sdk.RequestError.methodNotFound(method);
+    }
+  }
+
+  private parseListCursor(cursor: string | null | undefined): number {
+    if (cursor == null) {
+      return 0;
+    }
+
+    const trimmed = cursor.trim();
+    if (trimmed.length === 0) {
+      return 0;
+    }
+
+    if (!/^[0-9]+$/.test(trimmed)) {
+      throw this.deps.sdk.RequestError.invalidParams(
+        undefined,
+        `Invalid session/list cursor: ${cursor}`
+      );
+    }
+
+    const parsed = Number.parseInt(trimmed, 10);
+    if (!Number.isSafeInteger(parsed) || parsed < 0) {
+      throw this.deps.sdk.RequestError.invalidParams(
+        undefined,
+        `Invalid session/list cursor: ${cursor}`
+      );
+    }
+
+    return parsed;
+  }
+
+  private readSessionInfoUpdateTitle(params: Record<string, unknown>): string | undefined {
+    if (typeof params.title === "string") {
+      return params.title;
+    }
+
+    const update = asRecord(params.update);
+    if (typeof update?.title === "string") {
+      return update.title;
+    }
+
+    return undefined;
+  }
+
+  private readCancelRequestSessionId(params: Record<string, unknown>): string | undefined {
+    const directSessionId = normalizeNonEmptyString(params.sessionId);
+    if (directSessionId) {
+      return directSessionId;
+    }
+
+    const meta = asRecord(params._meta);
+    const muxMeta = asRecord(meta?.mux);
+    return normalizeNonEmptyString(muxMeta?.sessionId ?? meta?.sessionId);
   }
 
   private subscribeToChat(workspaceId: string): void {
