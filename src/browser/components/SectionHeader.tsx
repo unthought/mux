@@ -129,68 +129,19 @@ export const SectionHeader: React.FC<SectionHeaderProps> = ({
 
       {/* Action Buttons (visible on hover) */}
       <div className="hidden flex items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
-        {/* Color Picker */}
-        <div className="relative" ref={colorPickerRef}>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                onClick={() => setShowColorPicker(!showColorPicker)}
-                className="text-muted hover:text-foreground hover:bg-hover flex h-5 w-5 cursor-pointer items-center justify-center rounded border-none bg-transparent p-0 transition-colors"
-                aria-label="Change color"
-              >
-                <Palette size={12} />
-              </button>
-            </TooltipTrigger>
-            <TooltipContent>Change color</TooltipContent>
-          </Tooltip>
-
-          {showColorPicker && (
-            <div className="bg-background border-border absolute top-full right-0 z-50 mt-1 rounded border p-2 shadow-lg">
-              {/* Preset swatches */}
-              <div className="mb-2 grid grid-cols-5 gap-1">
-                {SECTION_COLOR_PALETTE.map(([name, color]) => (
-                  <button
-                    key={color}
-                    onClick={() => {
-                      onChangeColor(color);
-                      setShowColorPicker(false);
-                    }}
-                    className={cn(
-                      "h-5 w-5 rounded border-2 transition-transform hover:scale-110",
-                      sectionColor === color ? "border-white" : "border-transparent"
-                    )}
-                    style={{ backgroundColor: color }}
-                    title={name}
-                    aria-label={`Set color to ${name}`}
-                  />
-                ))}
-              </div>
-              {/* Full color picker */}
-              <div className="section-color-picker">
-                <HexColorPicker
-                  color={sectionColor}
-                  onChange={(newColor) => onChangeColor(newColor)}
-                />
-              </div>
-              {/* Hex input */}
-              <div className="mt-2 flex items-center gap-1.5">
-                <input
-                  type="text"
-                  value={hexInputValue}
-                  onChange={(e) => {
-                    const value = e.target.value;
-                    setHexInputValue(value);
-                    // Only apply valid hex colors
-                    if (/^#[0-9a-fA-F]{6}$/.test(value)) {
-                      onChangeColor(value);
-                    }
-                  }}
-                  className="bg-background/50 text-foreground w-full rounded border border-white/20 px-1.5 py-0.5 text-xs outline-none"
-                />
-              </div>
-            </div>
-          )}
-        </div>
+        {/* Color Picker trigger (hidden hover button) */}
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              onClick={() => setShowColorPicker(!showColorPicker)}
+              className="text-muted hover:text-foreground hover:bg-hover flex h-5 w-5 cursor-pointer items-center justify-center rounded border-none bg-transparent p-0 transition-colors"
+              aria-label="Change color"
+            >
+              <Palette size={12} />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent>Change color</TooltipContent>
+        </Tooltip>
 
         {/* Rename */}
         <Tooltip>
@@ -234,6 +185,58 @@ export const SectionHeader: React.FC<SectionHeaderProps> = ({
           <TooltipContent>New workspace</TooltipContent>
         </Tooltip>
       </div>
+
+      {/* Color picker popover — rendered outside hidden div so it
+         shows when triggered from context menu */}
+      {showColorPicker && (
+        <div
+          ref={colorPickerRef}
+          className="bg-background border-border absolute top-full right-0 z-50 mt-1 rounded border p-2 shadow-lg"
+        >
+          {/* Preset swatches */}
+          <div className="mb-2 grid grid-cols-5 gap-1">
+            {SECTION_COLOR_PALETTE.map(([name, color]) => (
+              <button
+                key={color}
+                onClick={() => {
+                  onChangeColor(color);
+                  setShowColorPicker(false);
+                }}
+                className={cn(
+                  "h-5 w-5 rounded border-2 transition-transform hover:scale-110",
+                  sectionColor === color ? "border-white" : "border-transparent"
+                )}
+                style={{ backgroundColor: color }}
+                title={name}
+                aria-label={`Set color to ${name}`}
+              />
+            ))}
+          </div>
+          {/* Full color picker */}
+          <div className="section-color-picker">
+            <HexColorPicker
+              color={sectionColor}
+              onChange={(newColor) => onChangeColor(newColor)}
+            />
+          </div>
+          {/* Hex input */}
+          <div className="mt-2 flex items-center gap-1.5">
+            <input
+              type="text"
+              value={hexInputValue}
+              onChange={(e) => {
+                const value = e.target.value;
+                setHexInputValue(value);
+                // Only apply valid hex colors
+                if (/^#[0-9a-fA-F]{6}$/.test(value)) {
+                  onChangeColor(value);
+                }
+              }}
+              className="bg-background/50 text-foreground w-full rounded border border-white/20 px-1.5 py-0.5 text-xs outline-none"
+            />
+          </div>
+        </div>
+      )}
     </div>
     </ContextMenuTrigger>
     <ContextMenuContent className="w-56">

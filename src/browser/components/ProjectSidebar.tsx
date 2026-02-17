@@ -119,13 +119,13 @@ function getProjectItemClassName(opts: {
 }): string {
   return cn(
     PROJECT_ITEM_BASE_CLASS,
-    opts.isDragging ? "cursor-grabbing opacity-35 [&_*]:!cursor-grabbing" : "cursor-grab",
+    opts.isDragging ? "cursor-grabbing opacity-35 [&_*]:!cursor-grabbing" : "cursor-pointer",
     opts.isOver && "bg-accent/[0.08]",
     opts.selected && "bg-hover border-l-accent",
     "hover:[&_button]:opacity-100 hover:[&_[data-drag-handle]]:opacity-100"
   );
 }
-type DraggableProjectItemProps = React.PropsWithChildren<{
+type DraggableProjectItemProps = {
   projectPath: string;
   onReorder: (draggedPath: string, targetPath: string) => void;
   selected?: boolean;
@@ -137,7 +137,8 @@ type DraggableProjectItemProps = React.PropsWithChildren<{
   "aria-controls"?: string;
   "aria-label"?: string;
   "data-project-path"?: string;
-}>;
+  children: (dragHandleRef: React.RefCallback<HTMLElement>) => React.ReactNode;
+};
 
 const DraggableProjectItemBase: React.FC<DraggableProjectItemProps> = ({
   projectPath,
@@ -173,9 +174,17 @@ const DraggableProjectItemBase: React.FC<DraggableProjectItemProps> = ({
     [projectPath, onReorder]
   );
 
+  // Pass drag connector as a ref callback so the chevron button
+  // can be the drag handle instead of making the entire row
+  // draggable (which causes grab cursor and swallows clicks).
+  const dragRef: React.RefCallback<HTMLElement> = useCallback(
+    (node: HTMLElement | null) => { drag(node); },
+    [drag]
+  );
+
   return (
     <div
-      ref={(node) => drag(drop(node))}
+      ref={(node) => drop(node)}
       className={getProjectItemClassName({
         isDragging,
         isOver,
@@ -183,7 +192,7 @@ const DraggableProjectItemBase: React.FC<DraggableProjectItemProps> = ({
       })}
       {...rest}
     >
-      {children}
+      {children(dragRef)}
     </div>
   );
 };
@@ -834,7 +843,7 @@ const ProjectSidebarInner: React.FC<ProjectSidebarProps> = ({
                           projectPath={projectPath}
                           onReorder={handleReorder}
                           selected={false}
-                          onClick={() => handleAddWorkspace(projectPath)}
+                          onClick={() => toggleProject(projectPath)}
                           onKeyDown={(e: React.KeyboardEvent) => {
                             // Ignore key events from child buttons
                             if (e.target instanceof HTMLElement && e.target !== e.currentTarget) {
@@ -842,24 +851,26 @@ const ProjectSidebarInner: React.FC<ProjectSidebarProps> = ({
                             }
                             if (e.key === "Enter" || e.key === " ") {
                               e.preventDefault();
-                              handleAddWorkspace(projectPath);
+                              toggleProject(projectPath);
                             }
                           }}
                           role="button"
                           tabIndex={0}
                           aria-expanded={isExpanded}
                           aria-controls={workspaceListId}
-                          aria-label={`Create workspace in ${projectName}`}
+                          aria-label={`${isExpanded ? "Collapse" : "Expand"} project ${projectName}`}
                           data-project-path={projectPath}
                         >
+                          {(dragHandleRef) => (<>
                           <button
+                            ref={dragHandleRef}
                             onClick={(event) => {
                               event.stopPropagation();
                               toggleProject(projectPath);
                             }}
                             aria-label={`${isExpanded ? "Collapse" : "Expand"} project ${projectName}`}
                             data-project-path={projectPath}
-                            className="text-secondary hover:bg-hover hover:border-border-light mr-1.5 flex h-5 w-5 shrink-0 cursor-pointer items-center justify-center rounded border border-transparent bg-transparent p-0 transition-all duration-200"
+                            className="text-secondary hover:bg-hover hover:border-border-light mr-1.5 flex h-5 w-5 shrink-0 cursor-grab items-center justify-center rounded border border-transparent bg-transparent p-0 transition-all duration-200"
                           >
                             <ChevronRight
                               size={16}
@@ -947,6 +958,7 @@ const ProjectSidebarInner: React.FC<ProjectSidebarProps> = ({
                               New chat ({formatKeybind(KEYBINDS.NEW_WORKSPACE)})
                             </TooltipContent>
                           </Tooltip>
+                          </>)}
                         </DraggableProjectItem>
                         </ContextMenuTrigger>
                         <ContextMenuContent className="w-52">
