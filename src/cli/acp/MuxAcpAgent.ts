@@ -224,6 +224,12 @@ export class MuxAcpAgent implements AcpAgent {
       );
     }
 
+    if (!session.caughtUp) {
+      throw new Error(
+        "Session is still replaying history — wait for replay to finish before prompting."
+      );
+    }
+
     const messageText = params.prompt
       .flatMap((block) => {
         if (block.type === "text") {
@@ -324,6 +330,16 @@ export class MuxAcpAgent implements AcpAgent {
         workspaceId: session.workspaceId,
         options: { soft: true },
       });
+
+      // If the prompt was queued (stream-start never arrived to bind a
+      // messageId), interruptStream restores the queued message to input but no
+      // stream events fire. Force-resolve the unbound prompt so it doesn't hang
+      // indefinitely.
+      const promptResolver = session.promptResolver;
+      if (promptResolver?.messageId.length === 0) {
+        this.sessionManager.clearPromptResolver(params.sessionId);
+        promptResolver.resolve({ stopReason: "cancelled" });
+      }
 
       if (!interruptResult.success) {
         this.deps.log("workspace.interruptStream returned error", interruptResult.error);
