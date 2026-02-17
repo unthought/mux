@@ -241,6 +241,14 @@ export class MuxAcpAgent implements AcpAgent {
     //
     // Why before: workspace.sendMessage may await the entire stream lifecycle
     // on the server side, so stream-start/stream-end events can arrive (and be
+    //
+    // TODO: workspace.sendMessage does not return a correlation ID, so we
+    // cannot deterministically match a stream-start to the specific send that
+    // triggered it when multiple producers target the same workspace. The
+    // historySequence guard + first-write-wins is the best available heuristic.
+    // A proper fix requires the server to return a correlation token from
+    // sendMessage that can be matched against stream-start.messageId.
+    //
     // processed by handleChatEvent) while sendMessage is in-flight. If the
     // resolver isn't installed yet, those events have nothing to resolve.
     //
