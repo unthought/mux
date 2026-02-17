@@ -74,6 +74,9 @@ export class SessionManager {
       resolveCaughtUp = resolve;
       rejectCaughtUp = reject;
     });
+    // Prevent unhandled rejection if markSubscriptionDead rejects before prompt()
+    // attaches its Promise.race handler.
+    caughtUpPromise.catch(() => undefined);
     assert(resolveCaughtUp != null, "caughtUpPromise resolver must be initialized");
     assert(rejectCaughtUp != null, "caughtUpPromise rejecter must be initialized");
 

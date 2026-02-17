@@ -54,6 +54,8 @@ export interface MuxAcpAgentDeps {
 }
 
 export class MuxAcpAgent implements AcpAgent {
+  private static readonly MAX_AGENT_ID_LENGTH = 64;
+
   private sessionManager = new SessionManager();
 
   constructor(private readonly deps: MuxAcpAgentDeps) {
@@ -1215,7 +1217,11 @@ export class MuxAcpAgent implements AcpAgent {
   }
 
   private resolveAgentId(candidate: string | undefined): string {
-    if (candidate && AGENT_ID_PATTERN.test(candidate)) {
+    if (
+      candidate &&
+      candidate.length <= MuxAcpAgent.MAX_AGENT_ID_LENGTH &&
+      AGENT_ID_PATTERN.test(candidate)
+    ) {
       return candidate;
     }
     return DEFAULT_AGENT_ID;
