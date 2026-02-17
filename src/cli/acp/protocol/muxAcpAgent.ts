@@ -3,7 +3,7 @@ import type * as schema from "@agentclientprotocol/sdk";
 import type { RouterClient } from "@orpc/server";
 import assert from "@/common/utils/assert";
 import { log } from "@/node/services/log";
-import { resolveModelAlias } from "@/common/utils/ai/models";
+import { defaultModel, resolveModelAlias } from "@/common/utils/ai/models";
 import type { AppRouter } from "@/node/orpc/router";
 import { VERSION } from "@/version";
 import {
@@ -205,6 +205,11 @@ export class MuxAcpAgent implements Agent {
     if (byAgent) {
       session.modelId = resolveModelAlias(byAgent.model);
       session.thinkingLevel = byAgent.thinkingLevel;
+    } else {
+      // No per-mode override exists — restore safe defaults so the previous
+      // mode's values are not accidentally carried forward.
+      session.modelId = resolveModelAlias(defaultModel);
+      session.thinkingLevel = "off";
     }
   }
 
