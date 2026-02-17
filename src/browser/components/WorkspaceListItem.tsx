@@ -645,7 +645,7 @@ function RegularWorkspaceListItemInner(props: WorkspaceListItemProps) {
               isWorking || isInitializing
                 ? "bg-green-500 border-green-800 animate-pulse shadow-[0_0_6px_rgba(34,197,94,0.5)]"
                 : isAwaitingInput
-                  ? "bg-yellow-400 border-yellow-700 animate-pulse shadow-[0_0_6px_rgba(250,204,21,0.4)]"
+                  ? "bg-amber-500 border-amber-700 animate-pulse shadow-[0_0_6px_rgba(245,158,11,0.4)]"
                   : hasError
                     ? "bg-red-500 border-red-800"
                     : isStoppedIncomplete
