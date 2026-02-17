@@ -103,9 +103,11 @@ function toUsageTokenCount(usage: {
 
   // Note: cachedInputTokens are already included in inputTokens
   // (see flatUsageToV3 in gatewayStreamNormalization.ts which derives
-  // noCache = inputTokens - cachedInputTokens). Including both would
-  // double-count cached tokens.
-  const counts = [usage.inputTokens, usage.outputTokens, usage.reasoningTokens];
+  // noCache = inputTokens - cachedInputTokens), and reasoningTokens are
+  // already part of outputTokens (see createDisplayUsage which computes
+  // outputWithoutReasoning = outputTokens - reasoningTokens). Including
+  // any of those would double-count tokens.
+  const counts = [usage.inputTokens, usage.outputTokens];
 
   let total = 0;
   for (const count of counts) {
