@@ -651,7 +651,7 @@ function RegularWorkspaceListItemInner(props: WorkspaceListItemProps) {
                     : isStoppedIncomplete
                       ? "bg-orange-400 border-orange-700"
                       : isUnread
-                        ? "bg-gray-300 border-gray-500"
+                        ? "bg-white border-gray-300"
                         : "bg-gray-500 border-gray-600"
             )} />
           </span>
