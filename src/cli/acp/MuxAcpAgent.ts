@@ -254,17 +254,16 @@ export class MuxAcpAgent implements AcpAgent {
       );
     }
 
-    const messageText = params.prompt
+    const rawMessageText = params.prompt
       .flatMap((block) => {
         if (block.type === "text") {
           return [block.text];
         }
         return [];
       })
-      .join("\n")
-      .trim();
+      .join("\n");
 
-    if (messageText.length === 0) {
+    if (rawMessageText.trim().length === 0) {
       throw this.deps.sdk.RequestError.invalidParams(
         undefined,
         "session/prompt requires at least one text content block"
@@ -305,7 +304,7 @@ export class MuxAcpAgent implements AcpAgent {
     try {
       sendResult = await this.deps.orpcClient.workspace.sendMessage({
         workspaceId: sessionAfterWait.workspaceId,
-        message: messageText,
+        message: rawMessageText,
         options: {
           model: sessionAfterWait.model,
           agentId: sessionAfterWait.agentId,
@@ -333,7 +332,7 @@ export class MuxAcpAgent implements AcpAgent {
     // its existing title.
     if (!sessionAfterWait.firstPromptSent && sessionAfterWait.isNewSession) {
       sessionAfterWait.firstPromptSent = true;
-      this.maybeGenerateName(sessionAfterWait, messageText).catch((error) => {
+      this.maybeGenerateName(sessionAfterWait, rawMessageText).catch((error) => {
         this.deps.log("name generation failed", error);
       });
     }
@@ -395,6 +394,24 @@ export class MuxAcpAgent implements AcpAgent {
         }
 
         this.sessionManager.updateConfig(params.sessionId, { agentId: params.value });
+
+        // Reload agent-scoped AI settings for the new agent so model/thinking
+        // match what the workspace has persisted for this agent.
+        try {
+          const info = await this.deps.orpcClient.workspace.getInfo({
+            workspaceId: session.workspaceId,
+          });
+          if (info) {
+            const aiSettings = info.aiSettingsByAgent?.[params.value] ?? info.aiSettings;
+            const model = normalizeNonEmptyString(aiSettings?.model) ?? this.defaultModel();
+            const thinkingLevel = this.resolveThinkingLevel(aiSettings?.thinkingLevel);
+            this.sessionManager.updateConfig(params.sessionId, { model, thinkingLevel });
+          }
+        } catch (error) {
+          // Best-effort: if loading settings fails, keep previous values.
+          this.deps.log("Failed to reload AI settings after agent config change", error);
+        }
+
         break;
       }
 
