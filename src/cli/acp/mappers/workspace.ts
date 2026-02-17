@@ -225,8 +225,9 @@ export async function createWorkspaceBackedSession(
   const meta = parseMuxMeta(params._meta ?? undefined);
 
   const runtimeConfig: RuntimeConfig = meta.runtimeConfig ?? { type: "local" };
-  const trunkBranch =
-    runtimeConfig.type === "local" ? meta.trunkBranch : (meta.trunkBranch ?? "main");
+  // Let the backend detect the default branch when trunkBranch is not specified,
+  // rather than assuming "main" — repositories may use "master" or other names.
+  const trunkBranch = meta.trunkBranch;
 
   const createResult = await client.workspace.create({
     projectPath,
