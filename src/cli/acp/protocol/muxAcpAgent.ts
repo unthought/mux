@@ -202,8 +202,6 @@ export class MuxAcpAgent implements Agent {
         loadSession: true,
         promptCapabilities: {
           embeddedContext: true,
-          image: true,
-          audio: true,
         },
         sessionCapabilities,
       },
@@ -298,7 +296,7 @@ export class MuxAcpAgent implements Agent {
     }
 
     session.modeId = nextModeId;
-    await this.persistSessionAISettings(session);
+    // Mode switches should not overwrite per-mode AI defaults.
     await this.emitModeAndConfigUpdates(session);
 
     return {};
@@ -361,7 +359,7 @@ export class MuxAcpAgent implements Agent {
         const nextModeId = parseModeId(params.value);
         if (session.modeId !== nextModeId) {
           session.modeId = nextModeId;
-          persistAiSettings = true;
+          // Mode switches should not overwrite per-mode AI defaults.
           emitModeUpdate = true;
         }
         break;
@@ -409,6 +407,14 @@ export class MuxAcpAgent implements Agent {
     const session = this.sessions.require(params.sessionId);
 
     if (session.activePromptAbort) {
+      // Interrupt the backend workspace stream first, then abort the local pump.
+      await this.orpcClient.workspace
+        .interruptStream({
+          workspaceId: session.workspaceId,
+        })
+        .catch(() => {
+          // Best-effort: backend may already be idle.
+        });
       session.activePromptAbort.abort();
     }
 
