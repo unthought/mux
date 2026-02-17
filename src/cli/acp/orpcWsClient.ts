@@ -26,7 +26,20 @@ export function createOrpcWsClient(options: OrpcClientOptions): OrpcWsClient {
     throw new Error(`Invalid oRPC base URL: ${options.baseUrl}`, { cause: error });
   }
 
-  wsUrl.protocol = wsUrl.protocol === "https:" ? "wss:" : "ws:";
+  // Map HTTP schemes to their WebSocket equivalents; preserve ws/wss as-is.
+  const PROTOCOL_MAP: Record<string, string> = {
+    "http:": "ws:",
+    "https:": "wss:",
+    "ws:": "ws:",
+    "wss:": "wss:",
+  };
+  const mappedProtocol = PROTOCOL_MAP[wsUrl.protocol];
+  if (!mappedProtocol) {
+    throw new Error(
+      `Unsupported protocol "${wsUrl.protocol}" in oRPC base URL: ${options.baseUrl}`
+    );
+  }
+  wsUrl.protocol = mappedProtocol;
 
   const authToken = options.authToken?.trim();
   if (authToken) {

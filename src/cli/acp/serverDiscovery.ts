@@ -54,7 +54,10 @@ export async function discoverOrSpawnServer(
   if (explicitServerUrl) {
     return {
       baseUrl: explicitServerUrl,
-      authToken: normalizeOptionalToken(options.authToken ?? process.env.MUX_SERVER_AUTH_TOKEN),
+      // When --server-url is explicitly provided, only use --auth-token.
+      // Do not fall back to MUX_SERVER_AUTH_TOKEN to avoid leaking
+      // ambient env tokens to unrelated hosts.
+      authToken: normalizeOptionalToken(options.authToken),
     };
   }
 
