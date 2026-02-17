@@ -183,7 +183,12 @@ export function ThemeProvider({
   }, [forcedTheme, isNestedUnderForcedProvider, normalizedThemePreference]);
 
   const resolvedPersistedTheme =
-    normalizedThemePreference === "auto" ? systemTheme : normalizedThemePreference;
+    normalizedThemePreference === "auto"
+      ? // Resolve directly from matchMedia so manual -> auto reads the current OS theme in the same render.
+        typeof window !== "undefined"
+        ? resolveSystemTheme()
+        : systemTheme
+      : normalizedThemePreference;
 
   // If nested under a forced provider, use parent's resolved theme
   // Otherwise, use forcedTheme (if provided) or resolved persisted theme

@@ -12,7 +12,7 @@ const dom = new GlobalWindow();
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { act, cleanup, fireEvent, render } from "@testing-library/react";
 
-import { ThemeProvider, useTheme } from "./ThemeContext";
+import { ThemeProvider, type ThemeMode, type ThemePreference, useTheme } from "./ThemeContext";
 import { UI_THEME_KEY } from "@/common/constants/storage";
 
 let prefersLight = false;
@@ -174,6 +174,43 @@ describe("ThemeContext", () => {
     });
 
     expect(getByTestId("theme-value").textContent).toBe("flexoki-dark");
+  });
+
+  test("switching from manual to auto resolves using the current system theme immediately", () => {
+    const renderLog: Array<{ theme: ThemeMode; themePreference: ThemePreference }> = [];
+
+    const ThemeProbe = () => {
+      const { theme, themePreference } = useTheme();
+      renderLog.push({ theme, themePreference });
+      return null;
+    };
+
+    const { getByTestId } = render(
+      <ThemeProvider>
+        <ThemeProbe />
+        <TestComponent />
+      </ThemeProvider>
+    );
+
+    fireEvent.click(getByTestId("set-flexoki-dark-btn"));
+
+    act(() => {
+      setSystemTheme("light");
+    });
+
+    expect(getByTestId("theme-value").textContent).toBe("flexoki-dark");
+
+    const renderLogStartIndex = renderLog.length;
+    fireEvent.click(getByTestId("set-auto-btn"));
+
+    const autoRendersAfterSwitch = renderLog
+      .slice(renderLogStartIndex)
+      .filter((entry) => entry.themePreference === "auto");
+
+    expect(autoRendersAfterSwitch.length).toBeGreaterThan(0);
+    expect(autoRendersAfterSwitch[0]?.theme).toBe("light");
+    expect(getByTestId("theme-preference").textContent).toBe("auto");
+    expect(getByTestId("theme-value").textContent).toBe("light");
   });
 
   test("cycle toggle uses manual themes only", () => {
