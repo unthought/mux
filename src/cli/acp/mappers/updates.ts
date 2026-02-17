@@ -36,10 +36,15 @@ function stringifyUnknown(value: unknown): string {
   }
 
   try {
-    return JSON.stringify(value, null, 2);
+    const json = JSON.stringify(value, null, 2);
+    if (typeof json === "string") {
+      return json;
+    }
   } catch {
-    return String(value);
+    // Fall through to String() for values that throw during serialization.
   }
+
+  return String(value);
 }
 
 function asTextContentBlock(text: string): schema.ContentBlock {
