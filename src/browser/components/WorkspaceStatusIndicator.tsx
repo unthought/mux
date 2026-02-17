@@ -1,7 +1,7 @@
 import { useWorkspaceSidebarState } from "@/browser/stores/WorkspaceStore";
 import { ModelDisplay } from "@/browser/components/Messages/ModelDisplay";
 import { EmojiIcon } from "@/browser/components/icons/EmojiIcon";
-import { CircleHelp, ExternalLinkIcon, Loader2 } from "lucide-react";
+import { CircleHelp, ExternalLinkIcon, Loader2, AlertTriangle, Check } from "lucide-react";
 import { memo } from "react";
 import { Tooltip, TooltipTrigger, TooltipContent } from "./ui/tooltip";
 import { Button } from "./ui/button";
@@ -12,7 +12,11 @@ export const WorkspaceStatusIndicator = memo<{
   /** When true the workspace is still being provisioned (show "starting…"). Passed as
    *  a prop so this component doesn't need to subscribe to the full WorkspaceContext. */
   isCreating?: boolean;
-}>(({ workspaceId, fallbackModel, isCreating }) => {
+  /** Whether this workspace ended in an error state */
+  hasError?: boolean;
+  /** Whether this workspace has completed its task */
+  isCompleted?: boolean;
+}>(({ workspaceId, fallbackModel, isCreating, hasError, isCompleted }) => {
   const { canInterrupt, isStarting, awaitingUserQuestion, currentModel, agentStatus } =
     useWorkspaceSidebarState(workspaceId);
 
@@ -47,6 +51,26 @@ export const WorkspaceStatusIndicator = memo<{
             <TooltipContent align="center">{agentStatus.url}</TooltipContent>
           </Tooltip>
         )}
+      </div>
+    );
+  }
+
+  // Show error state
+  if (hasError) {
+    return (
+      <div className="text-red-400 flex min-w-0 items-center gap-1.5 text-xs">
+        <AlertTriangle aria-hidden="true" className="h-3 w-3 shrink-0" />
+        <span className="min-w-0 truncate">Error encountered</span>
+      </div>
+    );
+  }
+
+  // Show completed state with checkmark
+  if (isCompleted && !canInterrupt && !isStarting && !isCreating && !awaitingUserQuestion && !agentStatus) {
+    return (
+      <div className="text-muted flex min-w-0 items-center gap-1.5 text-xs">
+        <Check aria-hidden="true" className="h-3 w-3 shrink-0" />
+        <span className="min-w-0 truncate">Completed</span>
       </div>
     );
   }

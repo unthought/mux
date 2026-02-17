@@ -116,7 +116,8 @@ export const SectionHeader: React.FC<SectionHeaderProps> = ({
         <button
           onClick={onToggleExpand}
           onDoubleClick={() => setIsEditing(true)}
-          className="text-foreground min-w-0 flex-1 cursor-pointer truncate border-none bg-transparent p-0 text-left text-xs font-medium"
+          className="min-w-0 flex-1 cursor-pointer truncate border-none bg-transparent p-0 text-left text-xs font-medium"
+          style={{ color: sectionColor }}
         >
           {section.name}
           <span className="text-muted ml-1.5 font-normal">({workspaceCount})</span>

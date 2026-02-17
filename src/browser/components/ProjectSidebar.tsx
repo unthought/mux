@@ -56,6 +56,7 @@ import { useRouter } from "@/browser/contexts/RouterContext";
 import { usePopoverError } from "@/browser/hooks/usePopoverError";
 import { PopoverError } from "./PopoverError";
 import { SectionHeader } from "./SectionHeader";
+import { resolveSectionColor } from "@/common/constants/ui";
 import { AddSectionButton } from "./AddSectionButton";
 import { Button } from "@/browser/components/ui/button";
 import { SettingsButton } from "./SettingsButton";
@@ -1017,7 +1018,8 @@ const ProjectSidebarInner: React.FC<ProjectSidebarProps> = ({
 
                               const renderWorkspace = (
                                 metadata: FrontendWorkspaceMetadata,
-                                sectionId?: string
+                                sectionId?: string,
+                                sectionColor?: string
                               ) => (
                                 <WorkspaceListItem
                                   key={metadata.id}
@@ -1035,6 +1037,7 @@ const ProjectSidebarInner: React.FC<ProjectSidebarProps> = ({
                                   onCancelCreation={handleCancelWorkspaceCreation}
                                   depth={depthByWorkspaceId[metadata.id] ?? 0}
                                   sectionId={sectionId}
+                                  sectionColor={sectionColor}
                                 />
                               );
 
@@ -1103,7 +1106,8 @@ const ProjectSidebarInner: React.FC<ProjectSidebarProps> = ({
                               const renderAgeTiers = (
                                 workspaces: FrontendWorkspaceMetadata[],
                                 tierKeyPrefix: string,
-                                sectionId?: string
+                                sectionId?: string,
+                                sectionColor?: string
                               ): React.ReactNode => {
                                 const { recent, buckets } = partitionWorkspacesByAge(
                                   workspaces,
@@ -1162,7 +1166,7 @@ const ProjectSidebarInner: React.FC<ProjectSidebarProps> = ({
                                       </button>
                                       {isTierExpanded && (
                                         <>
-                                          {bucket.map((ws) => renderWorkspace(ws, sectionId))}
+                                          {bucket.map((ws) => renderWorkspace(ws, sectionId, sectionColor))}
                                           {(() => {
                                             const nextTier = findNextNonEmptyTier(
                                               buckets,
@@ -1180,7 +1184,7 @@ const ProjectSidebarInner: React.FC<ProjectSidebarProps> = ({
 
                                 return (
                                   <>
-                                    {recent.map((ws) => renderWorkspace(ws, sectionId))}
+                                    {recent.map((ws) => renderWorkspace(ws, sectionId, sectionColor))}
                                     {firstTier !== -1 && renderTier(firstTier)}
                                   </>
                                 );
@@ -1295,7 +1299,8 @@ const ProjectSidebarInner: React.FC<ProjectSidebarProps> = ({
                                                 ":tier:0",
                                                 ":tier"
                                               ),
-                                              section.id
+                                              section.id,
+                                              resolveSectionColor(section.color)
                                             )
                                           ) : sectionDrafts.length === 0 ? (
                                             <div className="text-muted px-3 py-2 text-center text-xs italic">

@@ -74,6 +74,8 @@ export interface WorkspaceListItemProps extends WorkspaceListItemBaseProps {
   isRemoving?: boolean;
   /** Section ID this workspace belongs to (for drag-drop targeting) */
   sectionId?: string;
+  /** Hex color of the section this workspace belongs to */
+  sectionColor?: string;
   onSelectWorkspace: (selection: WorkspaceSelection) => void;
   onArchiveWorkspace: (workspaceId: string, button: HTMLElement) => Promise<void>;
   onCancelCreation: (workspaceId: string) => Promise<void>;
@@ -347,6 +349,7 @@ function RegularWorkspaceListItemInner(props: WorkspaceListItemProps) {
     isRemoving: isRemovingProp,
     depth,
     sectionId,
+    sectionColor,
     onSelectWorkspace,
     onArchiveWorkspace,
     onCancelCreation,
@@ -489,7 +492,6 @@ function RegularWorkspaceListItemInner(props: WorkspaceListItemProps) {
   // initializing so users can see early streaming/status information immediately.
   const hasSecondaryRow = isArchiving === true || hasStatusText;
 
-  const showUnreadBar = !isInitializing && !isEditing && isUnread && !(isSelected && !isDisabled);
   const paddingLeft = getItemPaddingLeft(depth);
 
   // Drag handle for moving workspace between sections
@@ -517,6 +519,12 @@ function RegularWorkspaceListItemInner(props: WorkspaceListItemProps) {
   useEffect(() => {
     dragPreview(getEmptyImage(), { captureDraggingState: true });
   }, [dragPreview]);
+
+  // Determine workspace status for colored dot
+  const isSubAgent = (depth ?? 0) > 0;
+  const hasError = metadata.taskStatus === "reported" && metadata.incompatibleRuntime != null;
+  // For now, treat "reported" tasks as completed and non-reported non-working as idle
+  const isCompleted = !isWorking && !isInitializing && !hasError;
 
   return (
     <React.Fragment>
@@ -588,7 +596,36 @@ function RegularWorkspaceListItemInner(props: WorkspaceListItemProps) {
         data-section-id={sectionId ?? ""}
         data-git-status={gitStatus ? JSON.stringify(gitStatus) : undefined}
       >
-        <SelectionBar isSelected={isSelected && !isDisabled} showUnread={showUnreadBar} />
+        {/* Section color left border */}
+        {sectionColor && (
+          <span
+            className="absolute left-0 top-0 bottom-0 w-[3px]"
+            style={{ backgroundColor: sectionColor }}
+            aria-hidden
+          />
+        )}
+        {/* Status dot */}
+        <div className={cn(
+          "mt-1.5 flex shrink-0 flex-col items-center gap-0.5",
+          isSubAgent && "ml-0.5"
+        )}>
+          {/* Vertical connector line for sub-agents */}
+          {isSubAgent && (
+            <span className="bg-muted-dark absolute -top-1.5 left-[22px] h-3 w-px" style={{ left: `${(depth ?? 1) * 12 + 6}px` }} aria-hidden />
+          )}
+          <span className={cn(
+            "inline-block h-2 w-2 rounded-full shrink-0",
+            isWorking || isInitializing
+              ? "bg-green-500 animate-pulse"
+              : hasError
+                ? "bg-red-500"
+                : isCompleted && !isUnread
+                  ? "bg-muted-dark"
+                  : isUnread
+                    ? "bg-gray-300"
+                    : "bg-muted-dark"
+          )} />
+        </div>
 
         {/* Action button: cancel/delete spinner for initializing workspaces, overflow menu otherwise */}
         {isInitializing ? (
@@ -779,7 +816,8 @@ function RegularWorkspaceListItemInner(props: WorkspaceListItemProps) {
                 <HoverCardTrigger asChild>
                   <span
                     className={cn(
-                      "text-foreground block truncate text-left text-[13px] transition-colors duration-200",
+                      "block truncate text-left text-[13px] transition-colors duration-200",
+                      isSubAgent ? "text-muted-foreground" : "text-foreground font-medium",
                       !isDisabled && "cursor-pointer"
                     )}
                     onDoubleClick={(e) => {
@@ -851,6 +889,8 @@ function RegularWorkspaceListItemInner(props: WorkspaceListItemProps) {
                   workspaceId={workspaceId}
                   fallbackModel={fallbackModel}
                   isCreating={isInitializing}
+                  hasError={hasError}
+                  isCompleted={isCompleted && !isWorking && !isInitializing}
                 />
               )}
             </div>
