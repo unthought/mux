@@ -1232,9 +1232,11 @@ export class AgentSession {
     this.ackPendingPostCompactionStateOnStreamEnd = false;
     this.activeStreamHadAnyDelta = false;
     this.activeStreamHadPostCompactionInjection = false;
+
+    let effectiveOptions = options;
     this.activeStreamContext = {
       modelString,
-      options,
+      options: effectiveOptions,
       openaiTruncationModeOverride,
     };
     this.activeStreamUserMessageId = undefined;
@@ -1257,10 +1259,26 @@ export class AgentSession {
       );
     }
 
+    const shouldInferCriticTurn =
+      effectiveOptions?.isCriticTurn == null &&
+      effectiveOptions?.criticEnabled === true &&
+      this.shouldResumeAsCriticTurn(historyResult.data);
+
+    if (shouldInferCriticTurn && effectiveOptions) {
+      effectiveOptions = {
+        ...effectiveOptions,
+        isCriticTurn: true,
+      };
+
+      if (this.activeStreamContext) {
+        this.activeStreamContext.options = this.cloneSendMessageOptions(effectiveOptions);
+      }
+    }
+
     let requestHistory = historyResult.data;
-    if (options?.isCriticTurn === true) {
+    if (effectiveOptions?.isCriticTurn === true) {
       requestHistory = buildCriticRequestHistory(historyResult.data);
-    } else if (options?.criticEnabled === true) {
+    } else if (effectiveOptions?.criticEnabled === true) {
       requestHistory = buildActorRequestHistoryWithCriticFeedback(historyResult.data);
     }
 
@@ -1289,7 +1307,7 @@ export class AgentSession {
     this.activeCompactionRequest = this.resolveCompactionRequest(
       historyResult.data,
       modelString,
-      options
+      effectiveOptions
     );
 
     // Check for external file edits (timestamp-based polling)
@@ -1305,8 +1323,8 @@ export class AgentSession {
 
     // Enforce thinking policy for the specified model (single source of truth)
     // This ensures model-specific requirements are met regardless of where the request originates
-    const effectiveThinkingLevel = options?.thinkingLevel
-      ? enforceThinkingPolicy(modelString, options.thinkingLevel)
+    const effectiveThinkingLevel = effectiveOptions?.thinkingLevel
+      ? enforceThinkingPolicy(modelString, effectiveOptions.thinkingLevel)
       : undefined;
 
     // Bind recordFileState to this session for the propose_plan tool
@@ -1317,24 +1335,24 @@ export class AgentSession {
       workspaceId: this.workspaceId,
       modelString,
       thinkingLevel: effectiveThinkingLevel,
-      toolPolicy: options?.toolPolicy,
-      additionalSystemInstructions: options?.additionalSystemInstructions,
-      maxOutputTokens: options?.maxOutputTokens,
-      muxProviderOptions: options?.providerOptions,
-      agentId: options?.agentId,
+      toolPolicy: effectiveOptions?.toolPolicy,
+      additionalSystemInstructions: effectiveOptions?.additionalSystemInstructions,
+      maxOutputTokens: effectiveOptions?.maxOutputTokens,
+      muxProviderOptions: effectiveOptions?.providerOptions,
+      agentId: effectiveOptions?.agentId,
       recordFileState,
       changedFileAttachments:
         changedFileAttachments.length > 0 ? changedFileAttachments : undefined,
       postCompactionAttachments,
-      experiments: options?.experiments,
-      system1Model: options?.system1Model,
-      system1ThinkingLevel: options?.system1ThinkingLevel,
-      disableWorkspaceAgents: options?.disableWorkspaceAgents,
+      experiments: effectiveOptions?.experiments,
+      system1Model: effectiveOptions?.system1Model,
+      system1ThinkingLevel: effectiveOptions?.system1ThinkingLevel,
+      disableWorkspaceAgents: effectiveOptions?.disableWorkspaceAgents,
       hasQueuedMessage: () => !this.messageQueue.isEmpty(),
       openaiTruncationModeOverride,
-      criticEnabled: options?.criticEnabled,
-      criticPrompt: options?.criticPrompt,
-      isCriticTurn: options?.isCriticTurn,
+      criticEnabled: effectiveOptions?.criticEnabled,
+      criticPrompt: effectiveOptions?.criticPrompt,
+      isCriticTurn: effectiveOptions?.isCriticTurn,
     });
 
     if (!streamResult.success) {
@@ -1352,6 +1370,15 @@ export class AgentSession {
     }
 
     return streamResult;
+  }
+
+  private shouldResumeAsCriticTurn(history: MuxMessage[]): boolean {
+    const lastMessage = history[history.length - 1];
+    return (
+      lastMessage?.role === "assistant" &&
+      lastMessage.metadata?.partial === true &&
+      lastMessage.metadata?.messageSource === "critic"
+    );
   }
 
   private resolveCompactionRequest(

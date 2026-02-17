@@ -144,6 +144,20 @@ export function useResumeManager() {
     return true;
   };
 
+  const shouldResumeAsCriticTurn = (state: WorkspaceState): boolean => {
+    const lastPartialAssistantLike = [...state.messages].reverse().find((message) => {
+      if (message.type !== "assistant" && message.type !== "reasoning") {
+        return false;
+      }
+      if (message.isPartial !== true) {
+        return false;
+      }
+      return message.messageSource === "critic";
+    });
+
+    return lastPartialAssistantLike !== undefined;
+  };
+
   /**
    * Attempt to resume a workspace stream
    * Polling will check eligibility every 1 second
@@ -186,6 +200,14 @@ export function useResumeManager() {
           // This ensures custom model/tokens are preserved across resume
           const parsedCompaction = lastUserMsg.compactionRequest.parsed;
           options = applyCompactionOverrides(options, parsedCompaction);
+        }
+
+        if (shouldResumeAsCriticTurn(state)) {
+          options = {
+            ...options,
+            criticEnabled: true,
+            isCriticTurn: true,
+          };
         }
       }
 
