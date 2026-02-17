@@ -65,7 +65,7 @@ function setSystemTheme(theme: "light" | "dark") {
   const event = new dom.window.MediaQueryListEvent("change", {
     matches: prefersLight,
     media: mediaQueryList.media,
-  });
+  }) as unknown as MediaQueryListEvent;
 
   for (const listener of mediaQueryListeners) {
     listener(event);
