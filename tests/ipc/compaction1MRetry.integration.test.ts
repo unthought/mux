@@ -86,56 +86,65 @@ describeIntegration("compaction 1M context retry", () => {
         const collector = createStreamCollector(env.orpc, workspaceId);
         collector.start();
 
-        const opusModel = `anthropic:${KNOWN_MODELS.OPUS.providerModelId}`;
+        try {
+          // Avoid a race where sendMessage starts streaming before the subscription
+          // is fully established. Without this, we can miss terminal events under
+          // CI load and incorrectly time out with terminalEvent === null.
+          await collector.waitForSubscription(10_000);
 
-        // Send compaction request — use the same pattern as production /compact.
-        // Crucially, do NOT enable 1M context in providerOptions; the retry should add it.
-        const client = resolveOrpcClient(env);
-        const sendResult = await client.workspace.sendMessage({
-          workspaceId,
-          message:
-            "Please provide a detailed summary of this conversation. " +
-            "Capture all key decisions, context, and open questions.",
-          options: {
-            model: opusModel,
-            thinkingLevel: "off",
-            agentId: "compact",
-            // No providerOptions.anthropic.use1MContext here — the retry should inject it
-            toolPolicy: [{ regex_match: ".*", action: "disable" }],
-            muxMetadata: {
-              type: "compaction-request",
-              rawCommand: "/compact",
-              parsed: {},
+          const opusModel = `anthropic:${KNOWN_MODELS.OPUS.providerModelId}`;
+
+          // Send compaction request — use the same pattern as production /compact.
+          // Crucially, do NOT enable 1M context in providerOptions; the retry should add it.
+          const client = resolveOrpcClient(env);
+          const sendResult = await client.workspace.sendMessage({
+            workspaceId,
+            message:
+              "Please provide a detailed summary of this conversation. " +
+              "Capture all key decisions, context, and open questions.",
+            options: {
+              model: opusModel,
+              thinkingLevel: "off",
+              agentId: "compact",
+              // No providerOptions.anthropic.use1MContext here — the retry should inject it
+              toolPolicy: [{ regex_match: ".*", action: "disable" }],
+              muxMetadata: {
+                type: "compaction-request",
+                rawCommand: "/compact",
+                parsed: {},
+              },
             },
-          },
-        });
+          });
 
-        expect(sendResult.success).toBe(true);
+          expect(sendResult.success).toBe(true);
 
-        // Wait for either stream-end (success) or stream-error (failure).
-        // With 1M retry working, we expect stream-end.
-        const terminalEvent = await Promise.race([
-          collector.waitForEvent("stream-end", TEST_TIMEOUT_MS),
-          collector.waitForEvent("stream-error", TEST_TIMEOUT_MS),
-        ]);
+          // Wait for either stream-end (success) or stream-error (failure).
+          // With 1M retry working, we expect stream-end.
+          const terminalEvent = await Promise.race([
+            collector.waitForEvent("stream-end", TEST_TIMEOUT_MS),
+            collector.waitForEvent("stream-error", TEST_TIMEOUT_MS),
+          ]);
 
-        expect(terminalEvent).toBeDefined();
+          if (!terminalEvent) {
+            throw new Error("Timed out waiting for compaction terminal stream event");
+          }
 
-        if (terminalEvent?.type === "stream-error") {
-          // If we got a stream-error, the 1M retry didn't work.
-          // Log diagnostic info for debugging.
-          const errorType = "errorType" in terminalEvent ? terminalEvent.errorType : "unknown";
-          const errorMsg = "error" in terminalEvent ? terminalEvent.error : "unknown";
-          throw new Error(
-            `Compaction failed (expected 1M retry to succeed): ` +
-              `errorType=${errorType}, error=${errorMsg}`
-          );
+          if (terminalEvent.type === "stream-error") {
+            // If we got a stream-error, the 1M retry didn't work.
+            // Log diagnostic info for debugging.
+            const errorType = "errorType" in terminalEvent ? terminalEvent.errorType : "unknown";
+            const errorMsg = "error" in terminalEvent ? terminalEvent.error : "unknown";
+            throw new Error(
+              `Compaction failed (expected 1M retry to succeed): ` +
+                `errorType=${errorType}, error=${errorMsg}`
+            );
+          }
+
+          // Verify we got a successful compaction (stream-end)
+          expect(terminalEvent.type).toBe("stream-end");
+        } finally {
+          collector.stop();
         }
-
-        // Verify we got a successful compaction (stream-end)
-        expect(terminalEvent?.type).toBe("stream-end");
-
-        collector.stop();
       } finally {
         await cleanup();
       }
