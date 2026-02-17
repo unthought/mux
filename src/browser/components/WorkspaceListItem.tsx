@@ -617,7 +617,7 @@ function RegularWorkspaceListItemInner(props: WorkspaceListItemProps) {
           <span
             className="absolute bg-neutral-600"
             style={{
-              left: '15px',
+              left: '17px',
               top: '15px',
               bottom: 0,
               width: '1px',

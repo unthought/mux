@@ -8,6 +8,8 @@ subagent:
   runnable: false
 tools:
   # Inherits all tools from exec, then removes editing tools
+  add:
+    - ask_user_question
   remove:
     # Read-only: no file modifications
     - file_edit_.*

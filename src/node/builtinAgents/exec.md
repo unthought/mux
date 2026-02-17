@@ -33,7 +33,7 @@ tools:
   remove:
     # Exec mode doesn't use planning tools
     - propose_plan
-    - ask_user_question
+    # ask_user_question removed from deny list — now available in exec mode
     # Internal-only tools
     - system1_keep_ranges
 ---
