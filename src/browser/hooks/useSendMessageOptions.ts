@@ -9,6 +9,7 @@ import {
   normalizeSystem1ThinkingLevel,
 } from "@/browser/utils/messages/buildSendMessageOptions";
 import {
+  AGENT_AI_DEFAULTS_KEY,
   DEFAULT_MODEL_KEY,
   getModelKey,
   PREFERRED_SYSTEM_1_MODEL_KEY,
@@ -18,6 +19,7 @@ import type { SendMessageOptions } from "@/common/orpc/types";
 import { useProviderOptions } from "./useProviderOptions";
 import { useExperimentOverrideValue } from "./useExperiments";
 import { EXPERIMENT_IDS } from "@/common/constants/experiments";
+import { normalizeAgentAiDefaults } from "@/common/types/agentAiDefaults";
 
 /**
  * Extended send options that includes both the canonical model used for backend routing
@@ -66,17 +68,30 @@ export function useSendMessageOptions(workspaceId: string): SendMessageOptionsWi
     EXPERIMENT_IDS.EXEC_SUBAGENT_HARD_RESTART
   );
 
+  const [agentAiDefaultsRaw] = usePersistedState<unknown>(
+    AGENT_AI_DEFAULTS_KEY,
+    {},
+    {
+      listener: true,
+    }
+  );
+  const system1BashDefaults = normalizeAgentAiDefaults(agentAiDefaultsRaw).system1_bash;
+
   const [preferredSystem1Model] = usePersistedState<unknown>(PREFERRED_SYSTEM_1_MODEL_KEY, "", {
     listener: true,
   });
-  const system1Model = normalizeSystem1Model(preferredSystem1Model);
+  const system1Model = normalizeSystem1Model(
+    system1BashDefaults?.modelString ?? preferredSystem1Model
+  );
 
   const [preferredSystem1ThinkingLevel] = usePersistedState<unknown>(
     PREFERRED_SYSTEM_1_THINKING_LEVEL_KEY,
     "off",
     { listener: true }
   );
-  const system1ThinkingLevel = normalizeSystem1ThinkingLevel(preferredSystem1ThinkingLevel);
+  const system1ThinkingLevel = normalizeSystem1ThinkingLevel(
+    system1BashDefaults?.thinkingLevel ?? preferredSystem1ThinkingLevel
+  );
 
   // Compute base model (canonical format) for UI components
   const baseModel = normalizeModelPreference(preferredModel, defaultModel);

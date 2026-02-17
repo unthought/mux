@@ -1,4 +1,5 @@
 import {
+  AGENT_AI_DEFAULTS_KEY,
   getAgentIdKey,
   getModelKey,
   getThinkingLevelByModelKey,
@@ -22,6 +23,7 @@ import {
 import type { SendMessageOptions } from "@/common/orpc/types";
 import type { ThinkingLevel } from "@/common/types/thinking";
 import type { MuxProviderOptions } from "@/common/types/providerOptions";
+import { normalizeAgentAiDefaults } from "@/common/types/agentAiDefaults";
 import { WORKSPACE_DEFAULTS } from "@/constants/workspaceDefaults";
 import { isExperimentEnabled } from "@/browser/hooks/useExperiments";
 import { EXPERIMENT_IDS } from "@/common/constants/experiments";
@@ -74,9 +76,16 @@ export function getSendOptionsFromStorage(workspaceId: string): SendMessageOptio
 
   const providerOptions = getProviderOptions();
 
-  const system1Model = normalizeSystem1Model(readPersistedString(PREFERRED_SYSTEM_1_MODEL_KEY));
+  const system1BashDefaults = normalizeAgentAiDefaults(
+    readPersistedState<unknown>(AGENT_AI_DEFAULTS_KEY, {})
+  ).system1_bash;
+
+  const system1Model = normalizeSystem1Model(
+    system1BashDefaults?.modelString ?? readPersistedString(PREFERRED_SYSTEM_1_MODEL_KEY)
+  );
   const system1ThinkingLevel = normalizeSystem1ThinkingLevel(
-    readPersistedState<unknown>(PREFERRED_SYSTEM_1_THINKING_LEVEL_KEY, "off")
+    system1BashDefaults?.thinkingLevel ??
+      readPersistedState<unknown>(PREFERRED_SYSTEM_1_THINKING_LEVEL_KEY, "off")
   );
 
   const disableWorkspaceAgents = readPersistedState<boolean>(

@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { GlobalWindow } from "happy-dom";
 import {
+  AGENT_AI_DEFAULTS_KEY,
   getModelKey,
   PREFERRED_SYSTEM_1_MODEL_KEY,
   PREFERRED_SYSTEM_1_THINKING_LEVEL_KEY,
@@ -60,6 +61,47 @@ describe("getSendOptionsFromStorage", () => {
     window.localStorage.setItem(PREFERRED_SYSTEM_1_THINKING_LEVEL_KEY, JSON.stringify("high"));
     const withThinking = getSendOptionsFromStorage(workspaceId);
     expect(withThinking.system1ThinkingLevel).toBe("high");
+  });
+
+  test("uses agentAiDefaults.system1_bash when legacy keys are absent", () => {
+    const workspaceId = "ws-2-agent-defaults";
+
+    window.localStorage.setItem(
+      AGENT_AI_DEFAULTS_KEY,
+      JSON.stringify({
+        system1_bash: {
+          modelString: "openai:gpt-5.2",
+          thinkingLevel: "high",
+        },
+      })
+    );
+
+    const options = getSendOptionsFromStorage(workspaceId);
+    expect(options.system1Model).toBe("openai:gpt-5.2");
+    expect(options.system1ThinkingLevel).toBe("high");
+  });
+
+  test("prefers agentAiDefaults.system1_bash over legacy system1 keys", () => {
+    const workspaceId = "ws-2-agent-precedence";
+
+    window.localStorage.setItem(
+      PREFERRED_SYSTEM_1_MODEL_KEY,
+      JSON.stringify("anthropic:claude-sonnet-4")
+    );
+    window.localStorage.setItem(PREFERRED_SYSTEM_1_THINKING_LEVEL_KEY, JSON.stringify("off"));
+    window.localStorage.setItem(
+      AGENT_AI_DEFAULTS_KEY,
+      JSON.stringify({
+        system1_bash: {
+          modelString: "openai:gpt-5.2",
+          thinkingLevel: "high",
+        },
+      })
+    );
+
+    const options = getSendOptionsFromStorage(workspaceId);
+    expect(options.system1Model).toBe("openai:gpt-5.2");
+    expect(options.system1ThinkingLevel).toBe("high");
   });
 
   test("includes Anthropic prompt cache TTL from persisted provider options", () => {
