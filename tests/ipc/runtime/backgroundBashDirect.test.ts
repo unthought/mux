@@ -587,8 +587,32 @@ describe("Foreground to Background Migration", () => {
 
     const result = await bashPromise;
 
-    // Either it completed normally or was backgrounded
+    // Either it completed normally or was backgrounded. In the migration race,
+    // the immediate foreground return can have zero captured lines on slower
+    // runners (notably Windows CI) even though the process output is persisted.
     expect(result.success).toBe(true);
+
+    if (!result.output?.includes(marker)) {
+      if (!result.backgroundProcessId) {
+        throw new Error(
+          `Expected fast-exit marker in immediate output or background process id. ` +
+            `Output was: ${JSON.stringify(result.output ?? "")}`
+        );
+      }
+
+      const eventualOutput = await manager.getOutput(
+        result.backgroundProcessId,
+        undefined,
+        undefined,
+        5
+      );
+      expect(eventualOutput.success).toBe(true);
+      if (eventualOutput.success) {
+        expect(eventualOutput.output).toContain(marker);
+      }
+      return;
+    }
+
     expect(result.output).toContain(marker);
   });
 
