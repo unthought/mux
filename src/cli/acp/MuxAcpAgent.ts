@@ -61,14 +61,6 @@ export class MuxAcpAgent implements AcpAgent {
   constructor(private readonly deps: MuxAcpAgentDeps) {
     assert(deps != null, "MuxAcpAgent deps are required");
 
-    deps.conn.signal.addEventListener(
-      "abort",
-      () => {
-        this.sessionManager.disposeAll();
-      },
-      { once: true }
-    );
-
     if (deps.unstable) {
       deps.log("ACP unstable mode requested; unstable_* methods are enabled");
     }
@@ -77,6 +69,18 @@ export class MuxAcpAgent implements AcpAgent {
   // --- ACP Agent interface methods ---
 
   initialize(_params: acpSchema.InitializeRequest): Promise<acpSchema.InitializeResponse> {
+    // Register connection-close cleanup here rather than in the constructor,
+    // because AgentSideConnection calls the toAgent factory before assigning
+    // its internal #connection field. Accessing conn.signal in the constructor
+    // would throw "undefined is not an object".
+    this.deps.conn.signal.addEventListener(
+      "abort",
+      () => {
+        this.sessionManager.disposeAll();
+      },
+      { once: true }
+    );
+
     const sessionCapabilities: acpSchema.SessionCapabilities | undefined = this.deps.unstable
       ? {
           list: {},
