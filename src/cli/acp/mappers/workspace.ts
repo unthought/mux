@@ -7,6 +7,7 @@ import type { RuntimeConfig } from "@/common/types/runtime";
 import { parseThinkingDisplayLabel } from "@/common/types/thinking";
 import { defaultModel, resolveModelAlias } from "@/common/utils/ai/models";
 import assert from "@/common/utils/assert";
+import { shellQuote } from "@/common/utils/shell";
 import { validateWorkspaceName } from "@/common/utils/validation/workspaceValidation";
 import { detectDefaultTrunkBranch } from "@/node/git";
 import type { AppRouter } from "@/node/orpc/router";
@@ -174,6 +175,222 @@ function resolveWorkspaceBranchName(branchName: string | undefined): string {
   return normalizeWorkspaceBranchName(branchName) ?? createFallbackBranchName();
 }
 
+type MCPAddInput =
+  | {
+      name: string;
+      transport: "stdio";
+      command: string;
+    }
+  | {
+      name: string;
+      transport: "http" | "sse";
+      url: string;
+      headers?: Record<string, string>;
+    };
+
+interface MappedAcpMcpServer {
+  name: string;
+  addInput: MCPAddInput;
+}
+
+const ENV_VAR_NAME_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;
+
+function normalizeAcpMcpServerName(name: string): string {
+  const trimmed = name.trim();
+  assert(trimmed.length > 0, "ACP MCP server names must be non-empty");
+  return trimmed;
+}
+
+function mapAcpHttpHeaders(headers: schema.HttpHeader[]): Record<string, string> | undefined {
+  if (headers.length === 0) {
+    return undefined;
+  }
+
+  const mapped: Record<string, string> = {};
+  for (const header of headers) {
+    const normalizedName = header.name.trim();
+    assert(normalizedName.length > 0, "ACP MCP header names must be non-empty");
+    mapped[normalizedName] = header.value;
+  }
+
+  return Object.keys(mapped).length > 0 ? mapped : undefined;
+}
+
+function toShellCommandFromAcpStdioServer(server: schema.McpServerStdio): string {
+  const command = server.command.trim();
+  assert(command.length > 0, "ACP MCP stdio server command must be non-empty");
+
+  const envPrefix = server.env
+    .map((entry) => {
+      const normalizedName = entry.name.trim();
+      assert(normalizedName.length > 0, "ACP MCP env var names must be non-empty");
+      assert(
+        ENV_VAR_NAME_PATTERN.test(normalizedName),
+        `ACP MCP env var name must match ${ENV_VAR_NAME_PATTERN.source}: ${normalizedName}`
+      );
+      return `${normalizedName}=${shellQuote(entry.value)}`;
+    })
+    .join(" ");
+
+  const commandWithArgs = [command, ...server.args].map((segment) => shellQuote(segment)).join(" ");
+
+  return envPrefix.length > 0 ? `${envPrefix} ${commandWithArgs}` : commandWithArgs;
+}
+
+function mapAcpMcpServer(server: schema.McpServer): MappedAcpMcpServer {
+  const name = normalizeAcpMcpServerName(server.name);
+
+  if ("type" in server) {
+    const url = server.url.trim();
+    assert(url.length > 0, `ACP MCP server "${name}" URL must be non-empty`);
+
+    return {
+      name,
+      addInput: {
+        name,
+        transport: server.type,
+        url,
+        headers: mapAcpHttpHeaders(server.headers),
+      },
+    };
+  }
+
+  return {
+    name,
+    addInput: {
+      name,
+      transport: "stdio",
+      command: toShellCommandFromAcpStdioServer(server),
+    },
+  };
+}
+
+function toSortedServerList(values: Iterable<string>): string[] | undefined {
+  const sorted = Array.from(new Set(values)).sort();
+  return sorted.length > 0 ? sorted : undefined;
+}
+
+function areStringArraysEqual(left: string[] | undefined, right: string[] | undefined): boolean {
+  if (left === right) {
+    return true;
+  }
+
+  if (!left || !right) {
+    return false;
+  }
+
+  if (left.length !== right.length) {
+    return false;
+  }
+
+  for (let index = 0; index < left.length; index += 1) {
+    if (left[index] !== right[index]) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+interface WorkspaceMcpOverrides {
+  disabledServers?: string[];
+  enabledServers?: string[];
+  toolAllowlist?: Record<string, string[]>;
+}
+
+function normalizeWorkspaceMcpOverrides(overrides: WorkspaceMcpOverrides): WorkspaceMcpOverrides {
+  return {
+    ...overrides,
+    enabledServers: toSortedServerList(overrides.enabledServers ?? []),
+    disabledServers: toSortedServerList(overrides.disabledServers ?? []),
+  };
+}
+
+async function applyAcpMcpServersToWorkspace(
+  client: RouterClient<AppRouter>,
+  params: {
+    workspaceId: string;
+    projectPath: string;
+    mcpServers: schema.McpServer[] | undefined;
+  }
+): Promise<void> {
+  const requestedServers = params.mcpServers ?? [];
+  if (requestedServers.length === 0) {
+    return;
+  }
+
+  const mappedServers = requestedServers.map(mapAcpMcpServer);
+
+  const mappedByName = new Map<string, MappedAcpMcpServer>();
+  for (const mapped of mappedServers) {
+    if (mappedByName.has(mapped.name)) {
+      throw new Error(`Duplicate ACP MCP server name: ${mapped.name}`);
+    }
+    mappedByName.set(mapped.name, mapped);
+  }
+
+  const existingServers = await client.mcp.list({ projectPath: params.projectPath });
+
+  for (const mapped of mappedByName.values()) {
+    if (existingServers[mapped.name]) {
+      continue;
+    }
+
+    const addResult = await client.mcp.add(mapped.addInput);
+    if (!addResult.success) {
+      throw new Error(`Failed to add ACP MCP server "${mapped.name}": ${addResult.error}`);
+    }
+
+    // Keep ACP-provided servers disabled at global scope, then opt in only for
+    // this workspace through overrides. This avoids leaking per-session servers
+    // into unrelated workspaces.
+    const disableResult = await client.mcp.setEnabled({
+      name: mapped.name,
+      enabled: false,
+    });
+    if (!disableResult.success) {
+      throw new Error(
+        `Failed to set ACP MCP server "${mapped.name}" disabled by default: ${disableResult.error}`
+      );
+    }
+  }
+
+  const currentWorkspaceOverrides = await client.workspace.mcp.get({
+    workspaceId: params.workspaceId,
+  });
+  const currentOverrides = normalizeWorkspaceMcpOverrides(currentWorkspaceOverrides);
+
+  const enabledServers = new Set(currentOverrides.enabledServers ?? []);
+  const disabledServers = new Set(currentOverrides.disabledServers ?? []);
+
+  for (const serverName of mappedByName.keys()) {
+    enabledServers.add(serverName);
+    disabledServers.delete(serverName);
+  }
+
+  const nextOverrides = normalizeWorkspaceMcpOverrides({
+    ...currentOverrides,
+    enabledServers: toSortedServerList(enabledServers),
+    disabledServers: toSortedServerList(disabledServers),
+  });
+
+  if (
+    areStringArraysEqual(currentOverrides.enabledServers, nextOverrides.enabledServers) &&
+    areStringArraysEqual(currentOverrides.disabledServers, nextOverrides.disabledServers)
+  ) {
+    return;
+  }
+
+  const setResult = await client.workspace.mcp.set({
+    workspaceId: params.workspaceId,
+    overrides: nextOverrides,
+  });
+
+  if (!setResult.success) {
+    throw new Error(`Failed to apply workspace MCP overrides: ${setResult.error}`);
+  }
+}
+
 export function getWorkspaceAiSettings(
   metadata: FrontendWorkspaceMetadataSchemaType,
   modeId: SessionState["modeId"]
@@ -282,11 +499,11 @@ export async function createWorkspaceBackedSession(
   const runtimeConfig = meta.runtimeConfig;
 
   let trunkBranch = meta.trunkBranch;
-  if (!trunkBranch && !runtimeConfig) {
+  if (!trunkBranch && (!runtimeConfig || runtimeConfig.type === "worktree")) {
     try {
       trunkBranch = await detectDefaultTrunkBranch(projectPath);
     } catch {
-      // Best-effort auto-detection for default runtime path. If detection fails,
+      // Best-effort auto-detection for local/worktree runtime paths. If detection fails,
       // allow backend validation to return the canonical creation error.
     }
   }
@@ -316,6 +533,12 @@ export async function createWorkspaceBackedSession(
     throw new Error(`workspace.create failed: ${createResult.error}`);
   }
 
+  await applyAcpMcpServersToWorkspace(client, {
+    workspaceId: createResult.metadata.id,
+    projectPath,
+    mcpServers: params.mcpServers,
+  });
+
   return buildSessionState({
     sessionId: createResult.metadata.id,
     workspaceId: createResult.metadata.id,
@@ -334,6 +557,12 @@ export async function loadWorkspaceBackedSession(
 
   const meta = parseMuxMeta(params._meta ?? undefined);
 
+  await applyAcpMcpServersToWorkspace(client, {
+    workspaceId: metadata.id,
+    projectPath: metadata.projectPath,
+    mcpServers: params.mcpServers,
+  });
+
   return buildSessionState({
     sessionId: params.sessionId,
     workspaceId: metadata.id,
@@ -351,6 +580,12 @@ export async function resumeWorkspaceBackedSession(
   assertWorkspaceBelongsToCwd(metadata, params.cwd);
 
   const meta = parseMuxMeta(params._meta ?? undefined);
+
+  await applyAcpMcpServersToWorkspace(client, {
+    workspaceId: metadata.id,
+    projectPath: metadata.projectPath,
+    mcpServers: params.mcpServers,
+  });
 
   return buildSessionState({
     sessionId: params.sessionId,
@@ -383,6 +618,12 @@ export async function forkWorkspaceBackedSession(
   if (!forkResult.success) {
     throw new Error(`workspace.fork failed: ${forkResult.error}`);
   }
+
+  await applyAcpMcpServersToWorkspace(client, {
+    workspaceId: forkResult.metadata.id,
+    projectPath: forkResult.projectPath,
+    mcpServers: params.mcpServers,
+  });
 
   return buildSessionState({
     sessionId: forkResult.metadata.id,

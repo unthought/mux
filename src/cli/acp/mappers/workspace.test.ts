@@ -1,9 +1,11 @@
-import { describe, expect, it, vi } from "bun:test";
+import { beforeEach, describe, expect, it, vi } from "bun:test";
 import type * as schema from "@agentclientprotocol/sdk";
 import type { RouterClient } from "@orpc/server";
 import type { FrontendWorkspaceMetadataSchemaType } from "@/common/orpc/types";
 import { resolveModelAlias } from "@/common/utils/ai/models";
+import * as gitModule from "@/node/git";
 import type { AppRouter } from "@/node/orpc/router";
+
 import {
   createWorkspaceBackedSession,
   forkWorkspaceBackedSession,
@@ -50,16 +52,38 @@ function makeClient(overrides: {
   list?: ReturnType<typeof vi.fn>;
   getInfo?: ReturnType<typeof vi.fn>;
   fork?: ReturnType<typeof vi.fn>;
+  mcpList?: ReturnType<typeof vi.fn>;
+  mcpAdd?: ReturnType<typeof vi.fn>;
+  mcpSetEnabled?: ReturnType<typeof vi.fn>;
+  workspaceMcpGet?: ReturnType<typeof vi.fn>;
+  workspaceMcpSet?: ReturnType<typeof vi.fn>;
 }): RouterClient<AppRouter> {
   return {
+    mcp: {
+      list: overrides.mcpList ?? vi.fn().mockResolvedValue({}),
+      add: overrides.mcpAdd ?? vi.fn().mockResolvedValue({ success: true, data: undefined }),
+      setEnabled:
+        overrides.mcpSetEnabled ?? vi.fn().mockResolvedValue({ success: true, data: undefined }),
+    },
     workspace: {
       create: overrides.create ?? vi.fn(),
       list: overrides.list ?? vi.fn(),
       getInfo: overrides.getInfo ?? vi.fn(),
       fork: overrides.fork ?? vi.fn(),
+      mcp: {
+        get: overrides.workspaceMcpGet ?? vi.fn().mockResolvedValue({}),
+        set:
+          overrides.workspaceMcpSet ??
+          vi.fn().mockResolvedValue({ success: true, data: undefined }),
+      },
     },
   } as unknown as RouterClient<AppRouter>;
 }
+
+beforeEach(() => {
+  vi.restoreAllMocks();
+  vi.clearAllMocks();
+});
 
 describe("parseMuxMeta", () => {
   it("returns empty metadata for null/undefined/empty inputs", () => {
@@ -219,6 +243,160 @@ describe("createWorkspaceBackedSession", () => {
       thinkingLevel: "high",
       defaultModelId: "openai:gpt-5.2",
       defaultThinkingLevel: "low",
+    });
+  });
+
+  it("auto-detects trunk for explicit worktree runtime when trunkBranch is omitted", async () => {
+    const detectDefaultTrunkBranchMock = vi
+      .spyOn(gitModule, "detectDefaultTrunkBranch")
+      .mockResolvedValue("main");
+
+    const createMock = vi.fn().mockResolvedValue({
+      success: true,
+      metadata: makeWorkspaceMetadata({
+        id: "workspace-worktree",
+        projectPath: "/repo",
+      }),
+    });
+
+    const client = makeClient({ create: createMock });
+
+    await createWorkspaceBackedSession(client, {
+      cwd: "/repo",
+      mcpServers: [],
+      _meta: {
+        mux: {
+          runtimeConfig: {
+            type: "worktree",
+            srcBaseDir: "/tmp/mux/src",
+          },
+        },
+      },
+    });
+
+    expect(detectDefaultTrunkBranchMock).toHaveBeenCalledWith("/repo");
+
+    const createArg = createMock.mock.calls.at(0)?.[0] as
+      | {
+          projectPath: string;
+          branchName: string;
+          trunkBranch?: string;
+          title?: string;
+          runtimeConfig?: unknown;
+          sectionId?: string;
+        }
+      | undefined;
+
+    expect(createArg).toMatchObject({
+      projectPath: "/repo",
+      trunkBranch: "main",
+      title: undefined,
+      runtimeConfig: {
+        type: "worktree",
+        srcBaseDir: "/tmp/mux/src",
+      },
+      sectionId: undefined,
+    });
+    expect(createArg?.branchName).toMatch(/^acp-[a-z0-9]+-[a-z0-9]+$/);
+  });
+
+  it("applies ACP mcpServers to new workspaces via MCP config and workspace overrides", async () => {
+    const createMock = vi.fn().mockResolvedValue({
+      success: true,
+      metadata: makeWorkspaceMetadata({
+        id: "workspace-mcp",
+        projectPath: "/repo",
+      }),
+    });
+    const mcpListMock = vi.fn().mockResolvedValue({});
+    const mcpAddMock = vi.fn().mockResolvedValue({ success: true, data: undefined });
+    const mcpSetEnabledMock = vi.fn().mockResolvedValue({ success: true, data: undefined });
+    const workspaceMcpGetMock = vi.fn().mockResolvedValue({
+      enabledServers: ["existing-enabled"],
+      disabledServers: ["existing-disabled", "stdio-server"],
+      toolAllowlist: {
+        "existing-enabled": ["tool-a"],
+      },
+    });
+    const workspaceMcpSetMock = vi.fn().mockResolvedValue({ success: true, data: undefined });
+
+    const client = makeClient({
+      create: createMock,
+      mcpList: mcpListMock,
+      mcpAdd: mcpAddMock,
+      mcpSetEnabled: mcpSetEnabledMock,
+      workspaceMcpGet: workspaceMcpGetMock,
+      workspaceMcpSet: workspaceMcpSetMock,
+    });
+
+    await createWorkspaceBackedSession(client, {
+      cwd: "/repo",
+      mcpServers: [
+        {
+          name: "stdio-server",
+          command: "node",
+          args: ["server.js", "--flag"],
+          env: [
+            {
+              name: "MCP_TOKEN",
+              value: "abc",
+            },
+          ],
+        },
+        {
+          type: "http",
+          name: "http-server",
+          url: "https://mcp.example.com",
+          headers: [
+            {
+              name: "Authorization",
+              value: "Bearer abc",
+            },
+          ],
+        },
+      ],
+      _meta: {
+        mux: {
+          trunkBranch: "main",
+        },
+      },
+    });
+
+    expect(mcpListMock).toHaveBeenCalledWith({ projectPath: "/repo" });
+    expect(mcpAddMock).toHaveBeenCalledTimes(2);
+    expect(mcpAddMock).toHaveBeenNthCalledWith(1, {
+      name: "stdio-server",
+      transport: "stdio",
+      command: "MCP_TOKEN='abc' 'node' 'server.js' '--flag'",
+    });
+    expect(mcpAddMock).toHaveBeenNthCalledWith(2, {
+      name: "http-server",
+      transport: "http",
+      url: "https://mcp.example.com",
+      headers: {
+        Authorization: "Bearer abc",
+      },
+    });
+
+    expect(mcpSetEnabledMock).toHaveBeenCalledTimes(2);
+    expect(mcpSetEnabledMock).toHaveBeenNthCalledWith(1, {
+      name: "stdio-server",
+      enabled: false,
+    });
+    expect(mcpSetEnabledMock).toHaveBeenNthCalledWith(2, {
+      name: "http-server",
+      enabled: false,
+    });
+
+    expect(workspaceMcpSetMock).toHaveBeenCalledWith({
+      workspaceId: "workspace-mcp",
+      overrides: {
+        enabledServers: ["existing-enabled", "http-server", "stdio-server"],
+        disabledServers: ["existing-disabled"],
+        toolAllowlist: {
+          "existing-enabled": ["tool-a"],
+        },
+      },
     });
   });
 
