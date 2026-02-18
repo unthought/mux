@@ -802,10 +802,7 @@ const ProjectSidebarInner: React.FC<ProjectSidebarProps> = ({
                   <div className="flex items-center gap-1.5">
                     {muxChatProjectPath && (
                       <>
-                        <MuxChatHelpButton
-                          onClick={handleOpenMuxChat}
-                          isSelected={selectedWorkspace?.workspaceId === MUX_HELP_CHAT_WORKSPACE_ID}
-                        />
+
                         <MuxChatStatusIndicator />
                       </>
                     )}
