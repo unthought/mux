@@ -196,7 +196,9 @@ export class MuxAcpAgent implements AcpAgent {
       throw this.deps.sdk.RequestError.resourceNotFound(workspaceId);
     }
 
-    const agentId = this.resolveAgentId(info.agentId);
+    // Prefer agentId but fall back to legacy agentType for workspaces that
+    // predate the agentId field (upgrade/downgrade compatibility).
+    const agentId = this.resolveAgentId(info.agentId ?? info.agentType);
     const aiSettings = info.aiSettingsByAgent?.[agentId] ?? info.aiSettings;
     const model = normalizeNonEmptyString(aiSettings?.model) ?? this.defaultModel();
     const thinkingLevel = this.resolveThinkingLevel(aiSettings?.thinkingLevel);
@@ -677,7 +679,13 @@ export class MuxAcpAgent implements AcpAgent {
     const workspaceId = forkResult.metadata.id;
     assert(workspaceId.length > 0, "workspace.fork must return a non-empty workspace ID");
 
-    const agentId = this.resolveAgentId(forkResult.metadata.agentId ?? sourceInfo.agentId);
+    // Prefer agentId but fall back to legacy agentType for upgrade/downgrade compatibility.
+    const agentId = this.resolveAgentId(
+      forkResult.metadata.agentId ??
+        forkResult.metadata.agentType ??
+        sourceInfo.agentId ??
+        sourceInfo.agentType
+    );
     const sourceAiSettings = sourceInfo.aiSettingsByAgent?.[agentId] ?? sourceInfo.aiSettings;
     const forkedAiSettings =
       forkResult.metadata.aiSettingsByAgent?.[agentId] ?? forkResult.metadata.aiSettings;
