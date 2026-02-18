@@ -55,6 +55,7 @@ function makeClient(overrides: {
   remove?: ReturnType<typeof vi.fn>;
   mcpList?: ReturnType<typeof vi.fn>;
   mcpAdd?: ReturnType<typeof vi.fn>;
+  mcpRemove?: ReturnType<typeof vi.fn>;
   mcpSetEnabled?: ReturnType<typeof vi.fn>;
   workspaceMcpGet?: ReturnType<typeof vi.fn>;
   workspaceMcpSet?: ReturnType<typeof vi.fn>;
@@ -63,6 +64,7 @@ function makeClient(overrides: {
     mcp: {
       list: overrides.mcpList ?? vi.fn().mockResolvedValue({}),
       add: overrides.mcpAdd ?? vi.fn().mockResolvedValue({ success: true, data: undefined }),
+      remove: overrides.mcpRemove ?? vi.fn().mockResolvedValue({ success: true, data: undefined }),
       setEnabled:
         overrides.mcpSetEnabled ?? vi.fn().mockResolvedValue({ success: true, data: undefined }),
     },
@@ -366,43 +368,74 @@ describe("createWorkspaceBackedSession", () => {
 
     expect(mcpListMock).toHaveBeenCalledWith({ projectPath: "/repo" });
     expect(mcpAddMock).toHaveBeenCalledTimes(2);
-    expect(mcpAddMock).toHaveBeenNthCalledWith(1, {
-      name: "stdio-server",
-      transport: "stdio",
-      command: "MCP_TOKEN='abc' 'node' 'server.js' '--flag'",
-    });
-    expect(mcpAddMock).toHaveBeenNthCalledWith(2, {
-      name: "http-server",
-      transport: "http",
-      url: "https://mcp.example.com",
-      headers: {
-        Authorization: "Bearer abc",
-      },
+
+    const stdioAddArg = mcpAddMock.mock.calls.at(0)?.[0] as
+      | {
+          name: string;
+          transport: "stdio";
+          command: string;
+        }
+      | undefined;
+    const httpAddArg = mcpAddMock.mock.calls.at(1)?.[0] as
+      | {
+          name: string;
+          transport: "http";
+          url: string;
+          headers: Record<string, string>;
+        }
+      | undefined;
+
+    expect(stdioAddArg?.name).toMatch(/^acp-workspace-mcp-stdio-server-[a-z0-9]+$/);
+    expect(stdioAddArg?.transport).toBe("stdio");
+    expect(stdioAddArg?.command).toBe("MCP_TOKEN='abc' 'node' 'server.js' '--flag'");
+
+    expect(httpAddArg?.name).toMatch(/^acp-workspace-mcp-http-server-[a-z0-9]+$/);
+    expect(httpAddArg?.transport).toBe("http");
+    expect(httpAddArg?.url).toBe("https://mcp.example.com");
+    expect(httpAddArg?.headers).toEqual({
+      Authorization: "Bearer abc",
     });
 
     expect(mcpSetEnabledMock).toHaveBeenCalledTimes(2);
     expect(mcpSetEnabledMock).toHaveBeenNthCalledWith(1, {
-      name: "stdio-server",
+      name: stdioAddArg?.name,
       enabled: false,
     });
     expect(mcpSetEnabledMock).toHaveBeenNthCalledWith(2, {
-      name: "http-server",
+      name: httpAddArg?.name,
       enabled: false,
     });
 
-    expect(workspaceMcpSetMock).toHaveBeenCalledWith({
-      workspaceId: "workspace-mcp",
-      overrides: {
-        enabledServers: ["existing-enabled", "http-server", "stdio-server"],
-        disabledServers: ["existing-disabled"],
-        toolAllowlist: {
-          "existing-enabled": ["tool-a"],
-        },
-      },
+    const overrides = (
+      workspaceMcpSetMock.mock.calls.at(0)?.[0] as
+        | {
+            workspaceId: string;
+            overrides: {
+              enabledServers?: string[];
+              disabledServers?: string[];
+              toolAllowlist?: Record<string, string[]>;
+            };
+          }
+        | undefined
+    )?.overrides;
+
+    const stdioScopedName = stdioAddArg?.name;
+    const httpScopedName = httpAddArg?.name;
+    expect(stdioScopedName).toBeDefined();
+    expect(httpScopedName).toBeDefined();
+
+    const enabledServers = overrides?.enabledServers ?? [];
+    expect(enabledServers).toHaveLength(3);
+    expect(enabledServers.includes("existing-enabled")).toBe(true);
+    expect(enabledServers.includes(stdioScopedName!)).toBe(true);
+    expect(enabledServers.includes(httpScopedName!)).toBe(true);
+    expect(overrides?.disabledServers).toEqual(["existing-disabled", "stdio-server"]);
+    expect(overrides?.toolAllowlist).toEqual({
+      "existing-enabled": ["tool-a"],
     });
   });
 
-  it("rejects conflicting MCP server definitions when names already exist", async () => {
+  it("scopes ACP MCP server names per workspace to avoid global name collisions", async () => {
     const createMock = vi.fn().mockResolvedValue({
       success: true,
       metadata: makeWorkspaceMetadata({
@@ -417,13 +450,85 @@ describe("createWorkspaceBackedSession", () => {
         disabled: false,
       },
     });
+    const mcpAddMock = vi.fn().mockResolvedValue({ success: true, data: undefined });
+    const mcpSetEnabledMock = vi.fn().mockResolvedValue({ success: true, data: undefined });
+    const workspaceMcpSetMock = vi.fn().mockResolvedValue({ success: true, data: undefined });
     const removeMock = vi.fn().mockResolvedValue({ success: true });
-    const mcpAddMock = vi.fn();
 
     const client = makeClient({
       create: createMock,
       mcpList: mcpListMock,
       mcpAdd: mcpAddMock,
+      mcpSetEnabled: mcpSetEnabledMock,
+      workspaceMcpSet: workspaceMcpSetMock,
+      remove: removeMock,
+    });
+
+    await createWorkspaceBackedSession(client, {
+      cwd: "/repo",
+      mcpServers: [
+        {
+          name: "conflict",
+          command: "node",
+          args: ["requested-server.js"],
+          env: [],
+        },
+      ],
+      _meta: {
+        mux: {
+          trunkBranch: "main",
+        },
+      },
+    });
+
+    const addArg = mcpAddMock.mock.calls.at(0)?.[0] as
+      | {
+          name: string;
+          transport: "stdio";
+          command: string;
+        }
+      | undefined;
+    expect(addArg?.name).toMatch(/^acp-workspace-conflict-conflict-[a-z0-9]+$/);
+    expect(addArg?.name).not.toBe("conflict");
+    expect(addArg?.command).toBe("'node' 'requested-server.js'");
+
+    expect(mcpSetEnabledMock).toHaveBeenCalledWith({
+      name: addArg?.name,
+      enabled: false,
+    });
+    expect(workspaceMcpSetMock).toHaveBeenCalledWith({
+      workspaceId: "workspace-conflict",
+      overrides: {
+        enabledServers: [addArg?.name],
+        disabledServers: undefined,
+      },
+    });
+    expect(removeMock).not.toHaveBeenCalled();
+  });
+
+  it("removes newly added MCP servers when setup fails after registration", async () => {
+    const createMock = vi.fn().mockResolvedValue({
+      success: true,
+      metadata: makeWorkspaceMetadata({
+        id: "workspace-cleanup",
+        projectPath: "/repo",
+      }),
+    });
+    const mcpAddMock = vi.fn().mockResolvedValue({ success: true, data: undefined });
+    const mcpSetEnabledMock = vi.fn().mockResolvedValue({ success: true, data: undefined });
+    const mcpRemoveMock = vi.fn().mockResolvedValue({ success: true, data: undefined });
+    const workspaceMcpSetMock = vi.fn().mockResolvedValue({
+      success: false,
+      error: "workspace override write failed",
+    });
+    const removeMock = vi.fn().mockResolvedValue({ success: true });
+
+    const client = makeClient({
+      create: createMock,
+      mcpAdd: mcpAddMock,
+      mcpSetEnabled: mcpSetEnabledMock,
+      mcpRemove: mcpRemoveMock,
+      workspaceMcpSet: workspaceMcpSetMock,
       remove: removeMock,
     });
 
@@ -433,22 +538,29 @@ describe("createWorkspaceBackedSession", () => {
         cwd: "/repo",
         mcpServers: [
           {
-            name: "conflict",
+            name: "cleanup-server",
             command: "node",
-            args: ["requested-server.js"],
+            args: ["cleanup.js"],
             env: [],
           },
         ],
+        _meta: {
+          mux: {
+            trunkBranch: "main",
+          },
+        },
       });
     } catch (error) {
       thrownError = error;
     }
 
     expect(thrownError).toBeInstanceOf(Error);
-    expect((thrownError as Error).message).toContain('ACP MCP server name conflict for "conflict"');
-    expect(mcpAddMock).not.toHaveBeenCalled();
+
+    const scopedName = (mcpAddMock.mock.calls.at(0)?.[0] as { name: string } | undefined)?.name;
+    expect(scopedName).toBeDefined();
+    expect(mcpRemoveMock).toHaveBeenCalledWith({ name: scopedName });
     expect(removeMock).toHaveBeenCalledWith({
-      workspaceId: "workspace-conflict",
+      workspaceId: "workspace-cleanup",
       options: {
         force: true,
       },

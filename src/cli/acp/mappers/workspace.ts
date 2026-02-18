@@ -3,7 +3,6 @@ import type * as schema from "@agentclientprotocol/sdk";
 import type { RouterClient } from "@orpc/server";
 import { RuntimeConfigSchema } from "@/common/orpc/schemas";
 import type { FrontendWorkspaceMetadataSchemaType } from "@/common/orpc/types";
-import type { MCPHeaderValue, MCPServerInfo } from "@/common/types/mcp";
 import type { RuntimeConfig } from "@/common/types/runtime";
 import { parseThinkingDisplayLabel } from "@/common/types/thinking";
 import { defaultModel, resolveModelAlias } from "@/common/utils/ai/models";
@@ -194,7 +193,8 @@ type MCPAddInput =
     };
 
 interface MappedAcpMcpServer {
-  name: string;
+  requestedName: string;
+  scopedName: string;
   addInput: MCPAddInput;
 }
 
@@ -204,6 +204,31 @@ function normalizeAcpMcpServerName(name: string): string {
   const trimmed = name.trim();
   assert(trimmed.length > 0, "ACP MCP server names must be non-empty");
   return trimmed;
+}
+
+function normalizeScopedNameSegment(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, "-")
+    .replace(/^-+/, "")
+    .replace(/-+$/, "")
+    .slice(0, 24);
+}
+
+function shortHash(value: string): string {
+  let hash = 0;
+  for (const char of value) {
+    hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
+  }
+  return hash.toString(36);
+}
+
+function buildScopedAcpMcpServerName(workspaceId: string, requestedName: string): string {
+  const workspaceSegment = normalizeScopedNameSegment(workspaceId) || "workspace";
+  const serverSegment = normalizeScopedNameSegment(requestedName) || "server";
+  const suffix = shortHash(`${workspaceId}:${requestedName}`).slice(0, 6);
+  return `acp-${workspaceSegment}-${serverSegment}-${suffix}`;
 }
 
 function mapAcpHttpHeaders(headers: schema.HttpHeader[]): Record<string, string> | undefined {
@@ -242,17 +267,19 @@ function toShellCommandFromAcpStdioServer(server: schema.McpServerStdio): string
   return envPrefix.length > 0 ? `${envPrefix} ${commandWithArgs}` : commandWithArgs;
 }
 
-function mapAcpMcpServer(server: schema.McpServer): MappedAcpMcpServer {
-  const name = normalizeAcpMcpServerName(server.name);
+function mapAcpMcpServer(server: schema.McpServer, workspaceId: string): MappedAcpMcpServer {
+  const requestedName = normalizeAcpMcpServerName(server.name);
+  const scopedName = buildScopedAcpMcpServerName(workspaceId, requestedName);
 
   if ("type" in server) {
     const url = server.url.trim();
-    assert(url.length > 0, `ACP MCP server "${name}" URL must be non-empty`);
+    assert(url.length > 0, `ACP MCP server "${requestedName}" URL must be non-empty`);
 
     return {
-      name,
+      requestedName,
+      scopedName,
       addInput: {
-        name,
+        name: scopedName,
         transport: server.type,
         url,
         headers: mapAcpHttpHeaders(server.headers),
@@ -261,72 +288,38 @@ function mapAcpMcpServer(server: schema.McpServer): MappedAcpMcpServer {
   }
 
   return {
-    name,
+    requestedName,
+    scopedName,
     addInput: {
-      name,
+      name: scopedName,
       transport: "stdio",
       command: toShellCommandFromAcpStdioServer(server),
     },
   };
 }
 
-function normalizeHeaderNameForComparison(name: string): string | undefined {
-  const normalized = name.trim().toLowerCase();
-  return normalized.length > 0 ? normalized : undefined;
-}
-
-function areHeadersEquivalent(
-  existingHeaders: Record<string, MCPHeaderValue> | undefined,
-  requestedHeaders: Record<string, string> | undefined
-): boolean {
-  const existingByName = new Map<string, MCPHeaderValue>();
-  for (const [name, value] of Object.entries(existingHeaders ?? {})) {
-    const normalizedName = normalizeHeaderNameForComparison(name);
-    if (!normalizedName) {
-      continue;
-    }
-    existingByName.set(normalizedName, value);
+async function cleanupNewlyAddedMcpServers(
+  client: RouterClient<AppRouter>,
+  addedServerNames: string[]
+): Promise<string | undefined> {
+  if (addedServerNames.length === 0) {
+    return undefined;
   }
 
-  const requestedByName = new Map<string, string>();
-  for (const [name, value] of Object.entries(requestedHeaders ?? {})) {
-    const normalizedName = normalizeHeaderNameForComparison(name);
-    if (!normalizedName) {
-      continue;
-    }
-    requestedByName.set(normalizedName, value);
-  }
+  const cleanupErrors: string[] = [];
 
-  if (existingByName.size !== requestedByName.size) {
-    return false;
-  }
-
-  for (const [name, requestedValue] of requestedByName) {
-    const existingValue = existingByName.get(name);
-    if (typeof existingValue !== "string" || existingValue !== requestedValue) {
-      return false;
+  for (const serverName of [...addedServerNames].reverse()) {
+    try {
+      const removeResult = await client.mcp.remove({ name: serverName });
+      if (!removeResult.success) {
+        cleanupErrors.push(`${serverName}: ${removeResult.error ?? "unknown error"}`);
+      }
+    } catch (error) {
+      cleanupErrors.push(`${serverName}: ${toErrorMessage(error)}`);
     }
   }
 
-  return true;
-}
-
-function doesExistingMcpServerMatchRequested(
-  existingServer: MCPServerInfo,
-  requestedServer: MappedAcpMcpServer
-): boolean {
-  if (requestedServer.addInput.transport === "stdio") {
-    return (
-      existingServer.transport === "stdio" &&
-      existingServer.command === requestedServer.addInput.command
-    );
-  }
-
-  return (
-    existingServer.transport === requestedServer.addInput.transport &&
-    existingServer.url === requestedServer.addInput.url &&
-    areHeadersEquivalent(existingServer.headers, requestedServer.addInput.headers)
-  );
+  return cleanupErrors.length > 0 ? cleanupErrors.join("; ") : undefined;
 }
 
 function toSortedServerList(values: Iterable<string>): string[] | undefined {
@@ -383,81 +376,100 @@ async function applyAcpMcpServersToWorkspace(
     return;
   }
 
-  const mappedServers = requestedServers.map(mapAcpMcpServer);
+  const mappedServers = requestedServers.map((server) =>
+    mapAcpMcpServer(server, params.workspaceId)
+  );
 
-  const mappedByName = new Map<string, MappedAcpMcpServer>();
+  const mappedByRequestedName = new Map<string, MappedAcpMcpServer>();
   for (const mapped of mappedServers) {
-    if (mappedByName.has(mapped.name)) {
-      throw new Error(`Duplicate ACP MCP server name: ${mapped.name}`);
+    if (mappedByRequestedName.has(mapped.requestedName)) {
+      throw new Error(`Duplicate ACP MCP server name: ${mapped.requestedName}`);
     }
-    mappedByName.set(mapped.name, mapped);
+    mappedByRequestedName.set(mapped.requestedName, mapped);
   }
 
   const existingServers = await client.mcp.list({ projectPath: params.projectPath });
+  const newlyAddedServerNames: string[] = [];
 
-  for (const mapped of mappedByName.values()) {
-    const existingServer = existingServers[mapped.name];
-    if (existingServer) {
-      if (!doesExistingMcpServerMatchRequested(existingServer, mapped)) {
+  try {
+    for (const mapped of mappedByRequestedName.values()) {
+      const existedBefore = Boolean(existingServers[mapped.scopedName]);
+
+      const addResult = await client.mcp.add(mapped.addInput);
+      if (!addResult.success) {
         throw new Error(
-          `ACP MCP server name conflict for "${mapped.name}": existing configuration does not match requested settings`
+          `Failed to add ACP MCP server "${mapped.requestedName}": ${addResult.error}`
         );
       }
-      continue;
+
+      if (!existedBefore) {
+        newlyAddedServerNames.push(mapped.scopedName);
+      }
+
+      // Keep ACP-provided servers disabled at global scope, then opt in only
+      // for this workspace through overrides. ACP names are scoped per-workspace
+      // so repeated editor defaults (e.g. "filesystem") cannot collide globally.
+      const disableResult = await client.mcp.setEnabled({
+        name: mapped.scopedName,
+        enabled: false,
+      });
+      if (!disableResult.success) {
+        throw new Error(
+          `Failed to set ACP MCP server "${mapped.requestedName}" disabled by default: ${disableResult.error}`
+        );
+      }
     }
 
-    const addResult = await client.mcp.add(mapped.addInput);
-    if (!addResult.success) {
-      throw new Error(`Failed to add ACP MCP server "${mapped.name}": ${addResult.error}`);
-    }
-
-    // Keep ACP-provided servers disabled at global scope, then opt in only for
-    // this workspace through overrides. This avoids leaking per-session servers
-    // into unrelated workspaces.
-    const disableResult = await client.mcp.setEnabled({
-      name: mapped.name,
-      enabled: false,
+    const currentWorkspaceOverrides = await client.workspace.mcp.get({
+      workspaceId: params.workspaceId,
     });
-    if (!disableResult.success) {
+    const currentOverrides = normalizeWorkspaceMcpOverrides(currentWorkspaceOverrides);
+
+    const enabledServers = new Set(currentOverrides.enabledServers ?? []);
+    const disabledServers = new Set(currentOverrides.disabledServers ?? []);
+
+    for (const mapped of mappedByRequestedName.values()) {
+      enabledServers.add(mapped.scopedName);
+      disabledServers.delete(mapped.scopedName);
+    }
+
+    const nextOverrides = normalizeWorkspaceMcpOverrides({
+      ...currentOverrides,
+      enabledServers: toSortedServerList(enabledServers),
+      disabledServers: toSortedServerList(disabledServers),
+    });
+
+    if (
+      areStringArraysEqual(currentOverrides.enabledServers, nextOverrides.enabledServers) &&
+      areStringArraysEqual(currentOverrides.disabledServers, nextOverrides.disabledServers)
+    ) {
+      return;
+    }
+
+    const setResult = await client.workspace.mcp.set({
+      workspaceId: params.workspaceId,
+      overrides: nextOverrides,
+    });
+
+    if (!setResult.success) {
+      throw new Error(`Failed to apply workspace MCP overrides: ${setResult.error}`);
+    }
+  } catch (error) {
+    const cleanupError = await cleanupNewlyAddedMcpServers(client, newlyAddedServerNames);
+    const setupError = toErrorMessage(error);
+
+    if (cleanupError) {
       throw new Error(
-        `Failed to set ACP MCP server "${mapped.name}" disabled by default: ${disableResult.error}`
+        `Failed to apply ACP MCP servers: ${setupError}. ` +
+          `Failed to clean up added MCP servers: ${cleanupError}`
       );
     }
-  }
 
-  const currentWorkspaceOverrides = await client.workspace.mcp.get({
-    workspaceId: params.workspaceId,
-  });
-  const currentOverrides = normalizeWorkspaceMcpOverrides(currentWorkspaceOverrides);
+    if (error instanceof Error) {
+      throw error;
+    }
 
-  const enabledServers = new Set(currentOverrides.enabledServers ?? []);
-  const disabledServers = new Set(currentOverrides.disabledServers ?? []);
-
-  for (const serverName of mappedByName.keys()) {
-    enabledServers.add(serverName);
-    disabledServers.delete(serverName);
-  }
-
-  const nextOverrides = normalizeWorkspaceMcpOverrides({
-    ...currentOverrides,
-    enabledServers: toSortedServerList(enabledServers),
-    disabledServers: toSortedServerList(disabledServers),
-  });
-
-  if (
-    areStringArraysEqual(currentOverrides.enabledServers, nextOverrides.enabledServers) &&
-    areStringArraysEqual(currentOverrides.disabledServers, nextOverrides.disabledServers)
-  ) {
-    return;
-  }
-
-  const setResult = await client.workspace.mcp.set({
-    workspaceId: params.workspaceId,
-    overrides: nextOverrides,
-  });
-
-  if (!setResult.success) {
-    throw new Error(`Failed to apply workspace MCP overrides: ${setResult.error}`);
+    throw new Error(setupError);
   }
 }
 
