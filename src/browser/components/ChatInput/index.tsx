@@ -2417,7 +2417,7 @@ const ChatInputInner: React.FC<ChatInputProps> = (props) => {
                     (showCommandSuggestions && commandSuggestions.length > 0) ||
                     (showAtMentionSuggestions && atMentionSuggestions.length > 0)
                   }
-                  className={variant === "creation" ? "min-h-28" : "min-h-16"}
+                  className={variant === "creation" ? "min-h-28" : "min-h-20"}
                 />
                 {/* Keep shortcuts visible in both creation + workspace without bloating the footer or crowding it. */}
                 {input.trim() === "" && !editingMessage && (

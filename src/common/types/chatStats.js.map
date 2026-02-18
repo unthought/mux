@@ -1,1 +1,0 @@
-{"version":3,"file":"chatStats.js","sourceRoot":"","sources":["chatStats.ts"],"names":[],"mappings":"","sourcesContent":["import type z from \"zod\";\nimport type { ChatStatsSchema, TokenConsumerSchema } from \"../orpc/schemas\";\n\nexport type TokenConsumer = z.infer<typeof TokenConsumerSchema>;\n\nexport type ChatStats = z.infer<typeof ChatStatsSchema>;\n"]}

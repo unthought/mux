@@ -1,1 +1,0 @@
-{"version":3,"file":"index.js","sourceRoot":"","sources":["index.ts"],"names":[],"mappings":"AAAA,OAAO,EAAE,YAAY,EAAE,MAAM,gBAAgB,CAAC;AAC9C,OAAO,EAAE,gBAAgB,EAAE,WAAW,EAAE,MAAM,oCAAoC,CAAC","sourcesContent":["export { SettingsPage } from \"./SettingsPage\";\nexport { SettingsProvider, useSettings } from \"@/browser/contexts/SettingsContext\";\n"]}

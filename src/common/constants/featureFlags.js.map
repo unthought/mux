@@ -1,1 +1,0 @@
-{"version":3,"file":"featureFlags.js","sourceRoot":"","sources":["featureFlags.ts"],"names":[],"mappings":"AAAA,MAAM,CAAC,MAAM,iBAAiB,GAAG;IAC/B,UAAU,EAAE,cAAc;CAClB,CAAC","sourcesContent":["export const FEATURE_FLAG_KEYS = {\n  statsTabV1: \"stats_tab_v1\",\n} as const;\n\nexport type FeatureFlagKey = (typeof FEATURE_FLAG_KEYS)[keyof typeof FEATURE_FLAG_KEYS];\n"]}
