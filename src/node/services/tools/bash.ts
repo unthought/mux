@@ -522,6 +522,24 @@ function validateScript(script: string, config: ToolConfiguration): BashToolResu
   return null; // Valid
 }
 
+const VALIDATION_PATTERNS: RegExp[] = [
+  /(^|\n)\s*run_and_report\b/,
+  /(^|\n)\s*make\s+(test|typecheck|lint|static-check|fmt-check)\b/,
+  /(^|\n)\s*bun\s+(test|run\s+test|run\s+typecheck|run\s+lint)\b/,
+  /(^|\n)\s*npm\s+(test|run\s+(test|typecheck|lint))\b/,
+  /(^|\n)\s*pnpm\s+(test|run\s+(test|typecheck|lint))\b/,
+  /(^|\n)\s*yarn\s+(test|run\s+(test|typecheck|lint))\b/,
+  /(^|\n)\s*tsc\b/,
+  /(^|\n)\s*eslint\b/,
+  /(^|\n)\s*vitest\b/,
+  /(^|\n)\s*pytest\b/,
+  /(^|\n)\s*cargo\s+(test|check|clippy)\b/,
+];
+
+export function looksLikeValidationCommand(script: string): boolean {
+  return VALIDATION_PATTERNS.some((pattern) => pattern.test(script));
+}
+
 /**
  * Rewrite cmd.exe-style null-device redirects (e.g. `>nul`, `2>nul`) into `/dev/null`.
  *
@@ -860,6 +878,11 @@ export const createBashTool: ToolFactory = (config: ToolConfiguration) => {
       const safeDisplayName = resolveBashDisplayName(script, display_name);
       const validationError = validateScript(script, config);
       if (validationError) return validationError;
+
+      // Mark validation attempts for the pre-completion verification guard.
+      if (looksLikeValidationCommand(script)) {
+        config.verificationTracker?.markValidationAttempt();
+      }
 
       // Warn when the model appears to be reading files via bash output (cat/rg/grep).
       // Reading files via bash output is fragile (may be truncated or auto-filtered);

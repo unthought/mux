@@ -1,6 +1,6 @@
 import { describe, it, expect } from "bun:test";
 import { LocalRuntime } from "@/node/runtime/LocalRuntime";
-import { createBashTool } from "./bash";
+import { createBashTool, looksLikeValidationCommand } from "./bash";
 import type { BashOutputEvent } from "@/common/types/stream";
 import type { BashToolArgs, BashToolResult } from "@/common/types/tools";
 import { BASH_MAX_TOTAL_BYTES } from "@/common/constants/toolLimits";
@@ -42,6 +42,25 @@ function createTestBashTool() {
     },
   };
 }
+
+describe("looksLikeValidationCommand", () => {
+  it("matches common validation command patterns", () => {
+    expect(looksLikeValidationCommand("make test")).toBe(true);
+    expect(looksLikeValidationCommand("make typecheck")).toBe(true);
+    expect(looksLikeValidationCommand("bun test")).toBe(true);
+    expect(looksLikeValidationCommand("bun run lint")).toBe(true);
+    expect(looksLikeValidationCommand("vitest --run")).toBe(true);
+    expect(looksLikeValidationCommand("run_and_report typecheck make typecheck")).toBe(true);
+    expect(looksLikeValidationCommand("npm run test\npnpm run lint")).toBe(true);
+  });
+
+  it("does not match non-validation commands", () => {
+    expect(looksLikeValidationCommand("make build")).toBe(false);
+    expect(looksLikeValidationCommand("bun install")).toBe(false);
+    expect(looksLikeValidationCommand("echo test")).toBe(false);
+    expect(looksLikeValidationCommand("cargo build")).toBe(false);
+  });
+});
 
 describe("bash tool", () => {
   it("should execute a simple command successfully", async () => {
