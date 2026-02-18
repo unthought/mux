@@ -183,7 +183,7 @@ export class MuxAcpAgent implements AcpAgent {
         model,
         thinkingLevel,
       }),
-      modes: this.buildModes(modeResult.options, agentId),
+      modes: this.buildModes(modeResult, agentId),
     };
   }
 
@@ -230,7 +230,7 @@ export class MuxAcpAgent implements AcpAgent {
         model,
         thinkingLevel,
       }),
-      modes: this.buildModes(modeResult.options, agentId),
+      modes: this.buildModes(modeResult, agentId),
     };
   }
 
@@ -685,13 +685,19 @@ export class MuxAcpAgent implements AcpAgent {
     const workspaceId = forkResult.metadata.id;
     assert(workspaceId.length > 0, "workspace.fork must return a non-empty workspace ID");
 
-    // Prefer agentId but fall back to legacy agentType for upgrade/downgrade compatibility.
-    const agentId = this.resolveAgentId(
+    // Prefer agentId, then legacy agentType, then infer from aiSettingsByAgent
+    // (same fallback chain as loadSession for upgrade/downgrade compatibility).
+    const explicitForkAgent =
       forkResult.metadata.agentId ??
-        forkResult.metadata.agentType ??
-        sourceInfo.agentId ??
-        sourceInfo.agentType
-    );
+      forkResult.metadata.agentType ??
+      sourceInfo.agentId ??
+      sourceInfo.agentType;
+    const inferredForkAgent = !explicitForkAgent
+      ? (Object.keys(forkResult.metadata.aiSettingsByAgent ?? {}).find(
+          (k) => k !== DEFAULT_AGENT_ID
+        ) ?? Object.keys(sourceInfo.aiSettingsByAgent ?? {}).find((k) => k !== DEFAULT_AGENT_ID))
+      : undefined;
+    const agentId = this.resolveAgentId(explicitForkAgent ?? inferredForkAgent);
     const sourceAiSettings = sourceInfo.aiSettingsByAgent?.[agentId] ?? sourceInfo.aiSettings;
     const forkedAiSettings =
       forkResult.metadata.aiSettingsByAgent?.[agentId] ?? forkResult.metadata.aiSettings;
@@ -726,7 +732,7 @@ export class MuxAcpAgent implements AcpAgent {
         model,
         thinkingLevel,
       }),
-      modes: this.buildModes(modeResult.options, agentId),
+      modes: this.buildModes(modeResult, agentId),
     };
   }
 
@@ -1143,10 +1149,18 @@ export class MuxAcpAgent implements AcpAgent {
   }
 
   private buildModes(
-    modeOptions: ModeOption[],
+    modeResult: ModeOptionsResult,
     currentAgentId: string
   ): acpSchema.SessionModeState {
+    let modeOptions = modeResult.options;
     assert(modeOptions.length > 0, "buildModes requires at least one mode option");
+
+    // Mirror the injection logic from buildConfigOptions: when the session's
+    // agent is absent from the available modes (e.g., fallback after agent
+    // discovery failure), add it so currentModeId stays aligned with prompt().
+    if (!modeOptions.some((option) => option.id === currentAgentId)) {
+      modeOptions = [{ id: currentAgentId, name: currentAgentId }, ...modeOptions];
+    }
 
     const availableModes = modeOptions.map((option) => ({
       id: option.id,
@@ -1154,14 +1168,9 @@ export class MuxAcpAgent implements AcpAgent {
       ...(option.description ? { description: option.description } : {}),
     }));
 
-    const currentModeId =
-      modeOptions.find((option) => option.id === currentAgentId)?.id ??
-      modeOptions[0]?.id ??
-      DEFAULT_AGENT_ID;
-
     return {
       availableModes,
-      currentModeId,
+      currentModeId: currentAgentId,
     };
   }
 
