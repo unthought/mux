@@ -19,6 +19,7 @@ function isForegroundSuccess(
 }
 
 import { BackgroundProcessManager } from "@/node/services/backgroundProcessManager";
+import { StreamVerificationTracker } from "@/node/services/streamGuardrails/StreamVerificationTracker";
 
 // Mock ToolCallOptions for testing
 const mockToolCallOptions: ToolExecutionOptions = {
@@ -1916,6 +1917,46 @@ describe("bash tool - background execution", () => {
     } else {
       throw new Error("Expected background process ID in result");
     }
+
+    await manager.terminateAll();
+    tempDir[Symbol.dispose]();
+  });
+});
+
+describe("bash tool - verification tracker", () => {
+  it("should mark verification for foreground validation commands", async () => {
+    const tempDir = new TestTempDir("test-bash-verify");
+    const config = createTestToolConfig(tempDir.path);
+    const tracker = new StreamVerificationTracker();
+    config.verificationTracker = tracker;
+    const tool = createBashTool(config);
+
+    await tool.execute!(
+      { script: "make test", timeout_secs: 5, run_in_background: false, display_name: "test" },
+      mockToolCallOptions
+    );
+
+    expect(tracker.hasValidationAttempt()).toBe(true);
+    tempDir[Symbol.dispose]();
+  });
+
+  it("should not mark verification for background validation commands", async () => {
+    const manager = new BackgroundProcessManager("/tmp/mux-test-verify-bg");
+    const tempDir = new TestTempDir("test-bash-verify-bg");
+    const config = createTestToolConfig(tempDir.path);
+    const tracker = new StreamVerificationTracker();
+    config.verificationTracker = tracker;
+    config.backgroundProcessManager = manager;
+    const tool = createBashTool(config);
+
+    await tool.execute!(
+      { script: "make test", timeout_secs: 5, run_in_background: true, display_name: "test-bg" },
+      mockToolCallOptions
+    );
+
+    // Background commands haven't produced results yet, so they shouldn't
+    // count as "validation attempted"
+    expect(tracker.hasValidationAttempt()).toBe(false);
 
     await manager.terminateAll();
     tempDir[Symbol.dispose]();

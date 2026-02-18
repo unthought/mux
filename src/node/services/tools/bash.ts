@@ -889,7 +889,9 @@ export const createBashTool: ToolFactory = (config: ToolConfiguration) => {
       if (validationError) return validationError;
 
       // Mark validation attempts for the pre-completion verification guard.
-      if (looksLikeValidationCommand(script)) {
+      // Only count foreground commands — background processes haven't produced
+      // results yet, so they don't count as "validation attempted".
+      if (!run_in_background && looksLikeValidationCommand(script)) {
         config.verificationTracker?.markValidationAttempt();
       }
 
