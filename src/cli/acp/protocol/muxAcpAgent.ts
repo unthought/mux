@@ -448,6 +448,16 @@ export class MuxAcpAgent implements Agent {
     // externally-started streams (e.g., workspace loaded from another client/process).
     // Without this, sendMessage may queue behind the existing stream and the pump
     // could resolve on the old stream's terminal event instead of the new prompt's.
+    let hadPreexistingStream = false;
+    try {
+      const activity = await this.orpcClient.workspace.activity.list();
+      hadPreexistingStream = activity[session.workspaceId]?.streaming === true;
+    } catch {
+      // Activity snapshots are best-effort. If this fails, prefer strict mapping
+      // over suppressing a potentially valid user abort from the current prompt.
+      log.debug(`[acp] workspace.activity.list threw for ${session.workspaceId}`);
+    }
+
     try {
       const interruptResult = await this.orpcClient.workspace.interruptStream({
         workspaceId: session.workspaceId,
@@ -477,6 +487,7 @@ export class MuxAcpAgent implements Agent {
         conn: this.conn,
         session,
         unstableEnabled: this.options.unstable,
+        ignoreNextPreStartUserAbort: hadPreexistingStream,
         signal: combinedSignal.signal,
         onReady: async () => {
           // Guard against cancellation that arrived during the caught-up wait.

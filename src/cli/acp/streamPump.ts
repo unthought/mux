@@ -13,6 +13,7 @@ interface PumpOnChatToAcpUpdatesOptions {
   unstableEnabled: boolean;
   signal: AbortSignal;
   onReady: () => Promise<void>;
+  ignoreNextPreStartUserAbort?: boolean;
 }
 
 function isAbortError(error: unknown): boolean {
@@ -30,7 +31,9 @@ function isAbortError(error: unknown): boolean {
 export async function pumpOnChatToAcpUpdates(
   opts: PumpOnChatToAcpUpdatesOptions
 ): Promise<{ stopReason: schema.StopReason }> {
-  const mappingState = createUpdateMappingState();
+  const mappingState = createUpdateMappingState({
+    ignoreNextPreStartUserAbort: opts.ignoreNextPreStartUserAbort,
+  });
 
   try {
     const iterator = await opts.client.workspace.onChat(

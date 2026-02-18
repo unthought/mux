@@ -16,6 +16,11 @@ import assert from "@/common/utils/assert";
 
 export interface UpdateMappingState {
   activeMessageId: string | null;
+  /**
+   * When true, ignore a single pre-start user abort to avoid stale terminal events
+   * from an interrupted previous turn hijacking the current prompt.
+   */
+  ignoreNextPreStartUserAbort: boolean;
 }
 
 export type MappedWorkspaceEvent =
@@ -24,9 +29,12 @@ export type MappedWorkspaceEvent =
   | { kind: "stop"; stopReason: schema.StopReason }
   | { kind: "error"; error: Error };
 
-export function createUpdateMappingState(): UpdateMappingState {
+export function createUpdateMappingState(opts?: {
+  ignoreNextPreStartUserAbort?: boolean;
+}): UpdateMappingState {
   return {
     activeMessageId: null,
+    ignoreNextPreStartUserAbort: opts?.ignoreNextPreStartUserAbort ?? false,
   };
 }
 
@@ -308,6 +316,18 @@ export function mapWorkspaceChatEventToAcp(
   if (isStreamAbort(event)) {
     const match = ensureMessageId(state, event.messageId, event.type);
     if (!match.ok) {
+      if (state.activeMessageId == null) {
+        if (event.abortReason === "user" && state.ignoreNextPreStartUserAbort) {
+          state.ignoreNextPreStartUserAbort = false;
+          return { kind: "ignore" };
+        }
+
+        return {
+          kind: "stop",
+          stopReason: mapAbortReasonToStopReason(event.abortReason),
+        };
+      }
+
       return mapNonStartMessageIdMismatch(state, event.type, event.messageId);
     }
 

@@ -276,7 +276,7 @@ describe("mapWorkspaceChatEventToAcp", () => {
     expect(state.activeMessageId).toBeNull();
   });
 
-  it("ignores stale stream-abort when activeMessageId is null", () => {
+  it("treats pre-start stream-abort as terminal when activeMessageId is null", () => {
     const state = createUpdateMappingState();
 
     const mapped = mapWorkspaceChatEventToAcp(
@@ -285,8 +285,35 @@ describe("mapWorkspaceChatEventToAcp", () => {
       false
     );
 
-    expect(mapped).toEqual({ kind: "ignore" });
+    expect(mapped).toEqual({
+      kind: "stop",
+      stopReason: "end_turn",
+    });
     expect(state.activeMessageId).toBeNull();
+  });
+
+  it("ignores one stale pre-start user abort when stale guard is enabled", () => {
+    const state = createUpdateMappingState({
+      ignoreNextPreStartUserAbort: true,
+    });
+
+    const first = mapWorkspaceChatEventToAcp(
+      streamAbortEvent("user", STALE_MESSAGE_ID),
+      state,
+      false
+    );
+    expect(first).toEqual({ kind: "ignore" });
+    expect(state.ignoreNextPreStartUserAbort).toBe(false);
+
+    const second = mapWorkspaceChatEventToAcp(
+      streamAbortEvent("user", STALE_MESSAGE_ID),
+      state,
+      false
+    );
+    expect(second).toEqual({
+      kind: "stop",
+      stopReason: "cancelled",
+    });
   });
 
   it("maps stream-error to an error when it matches the active message", () => {
