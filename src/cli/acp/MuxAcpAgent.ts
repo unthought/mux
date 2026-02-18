@@ -410,6 +410,18 @@ export class MuxAcpAgent implements AcpAgent {
       return;
     }
 
+    const promptResolver = session.promptResolver;
+
+    // If the prompt is still queued (unbound — no stream-start arrived yet),
+    // resolve it locally as cancelled without calling interruptStream, which
+    // would abort the active stream of another producer on this workspace.
+    if (promptResolver?.messageId.length === 0) {
+      this.sessionManager.clearPromptResolver(params.sessionId);
+      promptResolver.resolve({ stopReason: "cancelled" });
+      return;
+    }
+
+    // Prompt is bound to a stream — interrupt normally.
     try {
       const interruptResult = await this.deps.orpcClient.workspace.interruptStream({
         workspaceId: session.workspaceId,
@@ -418,17 +430,6 @@ export class MuxAcpAgent implements AcpAgent {
 
       if (!interruptResult.success) {
         this.deps.log("workspace.interruptStream returned error", interruptResult.error);
-        return;
-      }
-
-      // If the prompt was queued (stream-start never arrived to bind a
-      // messageId), interruptStream restores the queued message to input but no
-      // stream events fire. Force-resolve the unbound prompt so it doesn't hang
-      // indefinitely.
-      const promptResolver = session.promptResolver;
-      if (promptResolver?.messageId.length === 0) {
-        this.sessionManager.clearPromptResolver(params.sessionId);
-        promptResolver.resolve({ stopReason: "cancelled" });
       }
     } catch (error) {
       this.deps.log("workspace.interruptStream failed", error);
