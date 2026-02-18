@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from "react";
-import { Bell, BellOff, Ellipsis, Link2, Menu, Pencil, Server } from "lucide-react";
+import { Bell, BellOff, Ellipsis, Link2, Menu, Pencil, Server , MessageCircleQuestion } from "lucide-react";
 import { CUSTOM_EVENTS } from "@/common/constants/events";
 import { MUX_HELP_CHAT_WORKSPACE_ID } from "@/common/constants/muxChat";
 import { cn } from "@/common/lib/utils";
@@ -292,14 +292,18 @@ export const WorkspaceHeader: React.FC<WorkspaceHeaderProps> = ({
             <TooltipContent>Open sidebar ({formatKeybind(KEYBINDS.TOGGLE_SIDEBAR)})</TooltipContent>
           </Tooltip>
         )}
-        <RuntimeBadge
-          runtimeConfig={runtimeConfig}
-          isWorking={isWorking}
-          workspacePath={namedWorkspacePath}
-          workspaceName={workspaceName}
-          tooltipSide="bottom"
-        />
-        <span className="min-w-0 truncate font-mono text-xs">{projectName}</span>
+        {isMuxHelpChat ? (
+          <MessageCircleQuestion className="h-4 w-4 text-muted-foreground" />
+        ) : (
+          <RuntimeBadge
+            runtimeConfig={runtimeConfig}
+            isWorking={isWorking}
+            workspacePath={namedWorkspacePath}
+            workspaceName={workspaceName}
+            tooltipSide="bottom"
+          />
+        )}
+        <span className="min-w-0 truncate font-mono text-xs">{isMuxHelpChat ? 'Chat with Mux' : projectName}</span>
         <div className="flex items-center gap-1">
           <BranchSelector workspaceId={workspaceId} workspaceName={workspaceName} />
           <GitStatusIndicator

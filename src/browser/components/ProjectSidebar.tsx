@@ -797,8 +797,7 @@ const ProjectSidebarInner: React.FC<ProjectSidebarProps> = ({
                       className="flex items-center gap-1.5 cursor-pointer border-none bg-transparent p-0 text-foreground hover:text-foreground/80"
                       aria-label="Open Chat with Mux"
                     >
-                      <MessageCircleQuestion className="h-4 w-4 text-muted-foreground" />
-                      <span className="text-sm font-semibold">Chat with Mux</span>
+                      <MuxLogo className="h-4 w-auto" />
                     </button>
                   <div className="flex items-center gap-1.5">
                     {muxChatProjectPath && (
