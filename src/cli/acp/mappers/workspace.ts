@@ -3,6 +3,7 @@ import type * as schema from "@agentclientprotocol/sdk";
 import type { RouterClient } from "@orpc/server";
 import { RuntimeConfigSchema } from "@/common/orpc/schemas";
 import type { FrontendWorkspaceMetadataSchemaType } from "@/common/orpc/types";
+import type { MCPHeaderValue, MCPServerInfo } from "@/common/types/mcp";
 import type { RuntimeConfig } from "@/common/types/runtime";
 import { parseThinkingDisplayLabel } from "@/common/types/thinking";
 import { defaultModel, resolveModelAlias } from "@/common/utils/ai/models";
@@ -269,6 +270,65 @@ function mapAcpMcpServer(server: schema.McpServer): MappedAcpMcpServer {
   };
 }
 
+function normalizeHeaderNameForComparison(name: string): string | undefined {
+  const normalized = name.trim().toLowerCase();
+  return normalized.length > 0 ? normalized : undefined;
+}
+
+function areHeadersEquivalent(
+  existingHeaders: Record<string, MCPHeaderValue> | undefined,
+  requestedHeaders: Record<string, string> | undefined
+): boolean {
+  const existingByName = new Map<string, MCPHeaderValue>();
+  for (const [name, value] of Object.entries(existingHeaders ?? {})) {
+    const normalizedName = normalizeHeaderNameForComparison(name);
+    if (!normalizedName) {
+      continue;
+    }
+    existingByName.set(normalizedName, value);
+  }
+
+  const requestedByName = new Map<string, string>();
+  for (const [name, value] of Object.entries(requestedHeaders ?? {})) {
+    const normalizedName = normalizeHeaderNameForComparison(name);
+    if (!normalizedName) {
+      continue;
+    }
+    requestedByName.set(normalizedName, value);
+  }
+
+  if (existingByName.size !== requestedByName.size) {
+    return false;
+  }
+
+  for (const [name, requestedValue] of requestedByName) {
+    const existingValue = existingByName.get(name);
+    if (typeof existingValue !== "string" || existingValue !== requestedValue) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+function doesExistingMcpServerMatchRequested(
+  existingServer: MCPServerInfo,
+  requestedServer: MappedAcpMcpServer
+): boolean {
+  if (requestedServer.addInput.transport === "stdio") {
+    return (
+      existingServer.transport === "stdio" &&
+      existingServer.command === requestedServer.addInput.command
+    );
+  }
+
+  return (
+    existingServer.transport === requestedServer.addInput.transport &&
+    existingServer.url === requestedServer.addInput.url &&
+    areHeadersEquivalent(existingServer.headers, requestedServer.addInput.headers)
+  );
+}
+
 function toSortedServerList(values: Iterable<string>): string[] | undefined {
   const sorted = Array.from(new Set(values)).sort();
   return sorted.length > 0 ? sorted : undefined;
@@ -336,7 +396,13 @@ async function applyAcpMcpServersToWorkspace(
   const existingServers = await client.mcp.list({ projectPath: params.projectPath });
 
   for (const mapped of mappedByName.values()) {
-    if (existingServers[mapped.name]) {
+    const existingServer = existingServers[mapped.name];
+    if (existingServer) {
+      if (!doesExistingMcpServerMatchRequested(existingServer, mapped)) {
+        throw new Error(
+          `ACP MCP server name conflict for "${mapped.name}": existing configuration does not match requested settings`
+        );
+      }
       continue;
     }
 
@@ -650,11 +716,38 @@ export async function forkWorkspaceBackedSession(
     throw new Error(`workspace.fork failed: ${forkResult.error}`);
   }
 
-  await applyAcpMcpServersToWorkspace(client, {
-    workspaceId: forkResult.metadata.id,
-    projectPath: forkResult.projectPath,
-    mcpServers: params.mcpServers,
-  });
+  try {
+    await applyAcpMcpServersToWorkspace(client, {
+      workspaceId: forkResult.metadata.id,
+      projectPath: forkResult.projectPath,
+      mcpServers: params.mcpServers,
+    });
+  } catch (error) {
+    const setupError = toErrorMessage(error);
+
+    try {
+      const rollbackResult = await client.workspace.remove({
+        workspaceId: forkResult.metadata.id,
+        options: {
+          force: true,
+        },
+      });
+
+      if (!rollbackResult.success) {
+        throw new Error(rollbackResult.error ?? "unknown error");
+      }
+    } catch (rollbackError) {
+      throw new Error(
+        `Failed to apply ACP MCP configuration to forked workspace: ${setupError}. ` +
+          `Rollback failed for workspace ${forkResult.metadata.id}: ${toErrorMessage(rollbackError)}`
+      );
+    }
+
+    throw new Error(
+      `Failed to apply ACP MCP configuration to forked workspace: ${setupError}. ` +
+        `Workspace ${forkResult.metadata.id} was removed to avoid orphaned state.`
+    );
+  }
 
   return buildSessionState({
     sessionId: forkResult.metadata.id,

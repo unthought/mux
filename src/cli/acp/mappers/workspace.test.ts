@@ -402,6 +402,59 @@ describe("createWorkspaceBackedSession", () => {
     });
   });
 
+  it("rejects conflicting MCP server definitions when names already exist", async () => {
+    const createMock = vi.fn().mockResolvedValue({
+      success: true,
+      metadata: makeWorkspaceMetadata({
+        id: "workspace-conflict",
+        projectPath: "/repo",
+      }),
+    });
+    const mcpListMock = vi.fn().mockResolvedValue({
+      conflict: {
+        transport: "stdio",
+        command: "node other-server.js",
+        disabled: false,
+      },
+    });
+    const removeMock = vi.fn().mockResolvedValue({ success: true });
+    const mcpAddMock = vi.fn();
+
+    const client = makeClient({
+      create: createMock,
+      mcpList: mcpListMock,
+      mcpAdd: mcpAddMock,
+      remove: removeMock,
+    });
+
+    let thrownError: unknown;
+    try {
+      await createWorkspaceBackedSession(client, {
+        cwd: "/repo",
+        mcpServers: [
+          {
+            name: "conflict",
+            command: "node",
+            args: ["requested-server.js"],
+            env: [],
+          },
+        ],
+      });
+    } catch (error) {
+      thrownError = error;
+    }
+
+    expect(thrownError).toBeInstanceOf(Error);
+    expect((thrownError as Error).message).toContain('ACP MCP server name conflict for "conflict"');
+    expect(mcpAddMock).not.toHaveBeenCalled();
+    expect(removeMock).toHaveBeenCalledWith({
+      workspaceId: "workspace-conflict",
+      options: {
+        force: true,
+      },
+    });
+  });
+
   it("removes newly created workspaces when ACP MCP setup fails", async () => {
     const createMock = vi.fn().mockResolvedValue({
       success: true,
@@ -661,6 +714,71 @@ describe("forkWorkspaceBackedSession", () => {
       newName: undefined,
     });
     expect(session.workspaceId).toBe("workspace-forked");
+  });
+});
+
+it("removes forked workspace when MCP setup fails", async () => {
+  const getInfoMock = vi.fn().mockResolvedValue(
+    makeWorkspaceMetadata({
+      id: "workspace-source",
+      projectPath: "/repo",
+      namedWorkspacePath: "/repo/.mux/workspace-source",
+    })
+  );
+
+  const forkMock = vi.fn().mockResolvedValue({
+    success: true,
+    metadata: makeWorkspaceMetadata({
+      id: "workspace-forked",
+      projectPath: "/repo",
+    }),
+    projectPath: "/repo",
+  });
+
+  const removeMock = vi.fn().mockResolvedValue({ success: true });
+
+  const client = makeClient({
+    getInfo: getInfoMock,
+    fork: forkMock,
+    remove: removeMock,
+  });
+
+  let thrownError: unknown;
+  try {
+    await forkWorkspaceBackedSession(
+      client,
+      {
+        sessionId: "workspace-source",
+        cwd: "/repo",
+        mcpServers: [
+          {
+            name: "duplicate",
+            command: "node",
+            args: [],
+            env: [],
+          },
+          {
+            name: "duplicate",
+            command: "bun",
+            args: [],
+            env: [],
+          },
+        ],
+      },
+      undefined
+    );
+  } catch (error) {
+    thrownError = error;
+  }
+
+  expect(thrownError).toBeInstanceOf(Error);
+  expect((thrownError as Error).message).toContain("forked workspace");
+  expect((thrownError as Error).message).toContain("was removed to avoid orphaned state");
+  expect(removeMock).toHaveBeenCalledWith({
+    workspaceId: "workspace-forked",
+    options: {
+      force: true,
+    },
   });
 });
 
