@@ -81,7 +81,11 @@ export async function resolveBackend(opts: ResolveBackendOpts): Promise<Resolved
       kind: "remote",
       baseUrl,
       wsUrl: toWsUrl(baseUrl),
-      token: makeResolvedToken(opts.authToken, process.env.MUX_SERVER_AUTH_TOKEN, queryToken),
+      // Priority for explicit backend URLs:
+      // 1) CLI --auth-token
+      // 2) URL ?token=...
+      // 3) environment fallback
+      token: makeResolvedToken(opts.authToken, queryToken, process.env.MUX_SERVER_AUTH_TOKEN),
     };
   }
 
@@ -93,11 +97,16 @@ export async function resolveBackend(opts: ResolveBackendOpts): Promise<Resolved
       kind: "existing",
       baseUrl,
       wsUrl: toWsUrl(baseUrl),
+      // Priority for lockfile-discovered backends:
+      // 1) CLI --auth-token
+      // 2) lockfile token (paired with discovered server)
+      // 3) lockfile URL ?token=...
+      // 4) environment fallback
       token: makeResolvedToken(
         opts.authToken,
-        process.env.MUX_SERVER_AUTH_TOKEN,
+        lockData.token,
         queryToken,
-        lockData.token
+        process.env.MUX_SERVER_AUTH_TOKEN
       ),
     };
   }

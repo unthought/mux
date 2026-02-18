@@ -124,6 +124,21 @@ describe("resolveBackend", () => {
     });
   });
 
+  it("prefers URL ?token= over MUX_SERVER_AUTH_TOKEN for explicit server URLs", async () => {
+    process.env.MUX_SERVER_AUTH_TOKEN = "env-token";
+
+    const resolved = await resolveBackend({
+      serverUrl: "https://remote.example.com?token=url-secret",
+    });
+
+    expect(resolved).toEqual({
+      kind: "remote",
+      baseUrl: "https://remote.example.com",
+      wsUrl: "wss://remote.example.com/orpc/ws",
+      token: "url-secret",
+    });
+  });
+
   it("prefers explicit --auth-token over URL ?token= parameter", async () => {
     const resolved = await resolveBackend({
       serverUrl: "https://remote.example.com?token=url-secret",
@@ -157,6 +172,23 @@ describe("resolveBackend", () => {
     expect(getMuxHomeMock).toHaveBeenCalledTimes(1);
     expect(lockfileReadMock).toHaveBeenCalledTimes(1);
     expect(startEmbeddedServerMock).not.toHaveBeenCalled();
+  });
+
+  it("prefers lockfile token over MUX_SERVER_AUTH_TOKEN for discovered backends", async () => {
+    lockfileReadMock.mockResolvedValue({
+      baseUrl: "https://lockfile.example.com/api/",
+      token: "lockfile-token",
+    });
+    process.env.MUX_SERVER_AUTH_TOKEN = "env-token";
+
+    const resolved = await resolveBackend({});
+
+    expect(resolved).toEqual({
+      kind: "existing",
+      baseUrl: "https://lockfile.example.com/api",
+      wsUrl: "wss://lockfile.example.com/api/orpc/ws",
+      token: "lockfile-token",
+    });
   });
 
   it("starts embedded backend when explicit URL and lockfile are unavailable", async () => {
