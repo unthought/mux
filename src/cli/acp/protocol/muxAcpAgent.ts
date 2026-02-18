@@ -483,6 +483,12 @@ export class MuxAcpAgent implements Agent {
     try {
       const interruptResult = await this.orpcClient.workspace.interruptStream({
         workspaceId: session.workspaceId,
+        options: {
+          // Keep queued messages in durable flow when ACP preempts an in-flight stream.
+          // The default interrupt behavior restores queue items to UI input, but ACP
+          // does not consume restore-to-input events and would effectively drop them.
+          sendQueuedImmediately: true,
+        },
       });
       if (!interruptResult.success) {
         log.debug(
@@ -554,6 +560,11 @@ export class MuxAcpAgent implements Agent {
     try {
       const interruptResult = await this.orpcClient.workspace.interruptStream({
         workspaceId: session.workspaceId,
+        options: {
+          // Mirror prompt preemption behavior: preserve queued messages by
+          // forwarding them through queue processing instead of restoring input.
+          sendQueuedImmediately: true,
+        },
       });
 
       if (!interruptResult.success) {
