@@ -291,10 +291,14 @@ export class MuxAcpAgent implements AcpAgent {
       })
       .join("\n");
 
-    if (rawMessageText.trim().length === 0) {
+    // ACP prompt blocks may be non-text (for example, images/resources). We
+    // currently can only pass a string to workspace.sendMessage, so preserve
+    // text when present but allow non-text-only prompts through with an empty
+    // message payload.
+    if (params.prompt.length === 0) {
       throw this.deps.sdk.RequestError.invalidParams(
         undefined,
-        "session/prompt requires at least one text content block"
+        "session/prompt requires at least one content block"
       );
     }
 
@@ -359,10 +363,15 @@ export class MuxAcpAgent implements AcpAgent {
     // not when loading existing sessions, forking, or when explicit name/title
     // metadata was provided.
     if (!sessionAfterWait.firstPromptSent && sessionAfterWait.needsAutoName) {
-      sessionAfterWait.firstPromptSent = true;
-      this.maybeGenerateName(sessionAfterWait, rawMessageText).catch((error) => {
-        this.deps.log("name generation failed", error);
-      });
+      this.maybeGenerateName(sessionAfterWait, rawMessageText)
+        .then(() => {
+          // Only mark as sent after successful name generation so a failed
+          // rename/title update can be retried on the next prompt.
+          sessionAfterWait.firstPromptSent = true;
+        })
+        .catch((error) => {
+          this.deps.log("name generation failed", error);
+        });
     }
 
     // Safety timeout: if the prompt was queued behind another producer's active
