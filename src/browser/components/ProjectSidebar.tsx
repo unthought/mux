@@ -806,6 +806,10 @@ const ProjectSidebarInner: React.FC<ProjectSidebarProps> = ({
                         <MuxChatStatusIndicator />
                       </>
                     )}
+                    <MuxChatHelpButton
+                      onClick={handleOpenMuxChat}
+                      isSelected={selectedWorkspace?.workspaceId === MUX_HELP_CHAT_WORKSPACE_ID}
+                    />
                     <SettingsButton />
                     <Tooltip>
                       <TooltipTrigger asChild>
