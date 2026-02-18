@@ -394,6 +394,35 @@ describe("listWorkspaceBackedSessions", () => {
     expect(response.sessions[0]?.updatedAt).toBe("2026-03-01T12:00:00.000Z");
   });
 
+  it("uses the most recent archive state timestamp for updatedAt", async () => {
+    const listMock = vi.fn().mockResolvedValue([
+      makeWorkspaceMetadata({
+        id: "workspace-archived-recently",
+        projectPath: "/repo",
+        createdAt: "2026-01-01T00:00:00.000Z",
+        unarchivedAt: "2026-02-01T00:00:00.000Z",
+        archivedAt: "2026-03-01T12:00:00.000Z",
+      }),
+      makeWorkspaceMetadata({
+        id: "workspace-unarchived",
+        projectPath: "/repo",
+        createdAt: "2026-01-01T00:00:00.000Z",
+        unarchivedAt: "2026-02-15T00:00:00.000Z",
+      }),
+    ]);
+
+    const client = makeClient({ list: listMock });
+
+    const response = await listWorkspaceBackedSessions(client, {
+      cwd: "/repo",
+    });
+
+    expect(response.sessions[0]).toMatchObject({
+      sessionId: "workspace-archived-recently",
+      updatedAt: "2026-03-01T12:00:00.000Z",
+    });
+  });
+
   it("paginates with cursor offsets", async () => {
     const workspaces = Array.from({ length: 101 }, (_, index) =>
       makeWorkspaceMetadata({

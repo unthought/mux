@@ -390,7 +390,26 @@ function parseCursorOffset(cursor: string | null | undefined): number {
 function resolveWorkspaceUpdatedAt(
   metadata: FrontendWorkspaceMetadataSchemaType
 ): string | undefined {
-  return metadata.unarchivedAt ?? metadata.archivedAt ?? metadata.createdAt;
+  const candidates = [metadata.unarchivedAt, metadata.archivedAt, metadata.createdAt].filter(
+    (value): value is string => typeof value === "string" && value.length > 0
+  );
+
+  if (candidates.length === 0) {
+    return undefined;
+  }
+
+  let latestTimestamp = Number.NEGATIVE_INFINITY;
+  let latestValue = candidates[0];
+
+  for (const candidate of candidates) {
+    const parsed = parseWorkspaceTimestamp(candidate);
+    if (parsed >= latestTimestamp) {
+      latestTimestamp = parsed;
+      latestValue = candidate;
+    }
+  }
+
+  return latestValue;
 }
 
 function parseWorkspaceTimestamp(value: string | undefined): number {
