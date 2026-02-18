@@ -528,11 +528,15 @@ function validateScript(script: string, config: ToolConfiguration): BashToolResu
 const VALIDATION_COMMAND_RE =
   /(?:make\s+(?:test|typecheck|lint|static-check|fmt-check)|bun\s+(?:test|run\s+(?:test|typecheck|lint))|npm\s+(?:test|run\s+(?:test|typecheck|lint))|pnpm\s+(?:test|run\s+(?:test|typecheck|lint))|yarn\s+(?:test|run\s+(?:test|typecheck|lint))|tsc|eslint|vitest|pytest|cargo\s+(?:test|check|clippy))\b/;
 
+// Match validation commands at line start, after shell operators (&&, ||, ;, |),
+// or after run_and_report wrappers, to handle monorepo/subdirectory workflows
+// like `cd packages/app && make test`.
+const CMD_PREFIX = String.raw`(?:^|\n|&&|\|\||[;|])\s*`;
 const VALIDATION_PATTERNS: RegExp[] = [
-  // run_and_report <step_name> <validation_command...>
-  new RegExp(`(^|\\n)\\s*run_and_report\\s+\\S+\\s+${VALIDATION_COMMAND_RE.source}`),
-  // Standalone validation commands at the start of a line
-  new RegExp(`(^|\\n)\\s*${VALIDATION_COMMAND_RE.source}`),
+  // run_and_report <step_name> <validation_command...> (may include cd/shell before the command)
+  new RegExp(`${CMD_PREFIX}run_and_report\\s+\\S+\\s+.*?${VALIDATION_COMMAND_RE.source}`),
+  // Validation commands at line start or after shell operators
+  new RegExp(`${CMD_PREFIX}${VALIDATION_COMMAND_RE.source}`),
 ];
 
 export function looksLikeValidationCommand(script: string): boolean {

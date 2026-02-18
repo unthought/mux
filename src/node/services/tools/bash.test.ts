@@ -52,6 +52,13 @@ describe("looksLikeValidationCommand", () => {
     expect(looksLikeValidationCommand("vitest --run")).toBe(true);
     expect(looksLikeValidationCommand("run_and_report typecheck make typecheck")).toBe(true);
     expect(looksLikeValidationCommand("npm run test\npnpm run lint")).toBe(true);
+    // Validation commands after shell operators (monorepo/subdirectory workflows)
+    expect(looksLikeValidationCommand("cd packages/app && make test")).toBe(true);
+    expect(looksLikeValidationCommand("cd packages/app && bun test")).toBe(true);
+    expect(looksLikeValidationCommand("source .env; make typecheck")).toBe(true);
+    expect(looksLikeValidationCommand("run_and_report unit cd packages/app && bun test")).toBe(
+      true
+    );
   });
 
   it("does not match non-validation commands", () => {
