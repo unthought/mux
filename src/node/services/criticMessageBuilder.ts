@@ -180,6 +180,10 @@ export function buildActorRequestHistoryWithCriticFeedback(history: MuxMessage[]
       continue;
     }
 
+    if (message.metadata?.partial === true) {
+      continue;
+    }
+
     if (getCriticDoneCandidateText(message.parts) === CRITIC_DONE_SENTINEL) {
       continue;
     }

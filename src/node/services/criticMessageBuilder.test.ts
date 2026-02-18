@@ -65,6 +65,29 @@ describe("buildActorRequestHistoryWithCriticFeedback", () => {
     expect(transformed.some((message) => message.id === "critic-1")).toBe(false);
   });
 
+  test("drops partial critic feedback from actor request history", () => {
+    const history = [
+      createMuxMessage("user-1", "user", "Implement feature"),
+      createMuxMessage("actor-1", "assistant", "Actor draft", {
+        messageSource: "actor",
+      }),
+      createMuxMessage(
+        "critic-partial",
+        "assistant",
+        "Needs stronger invariants.",
+        {
+          messageSource: "critic",
+          partial: true,
+        },
+        [{ type: "reasoning", text: "Still reviewing edge cases." }]
+      ),
+    ];
+
+    const transformed = buildActorRequestHistoryWithCriticFeedback(history);
+    expect(transformed).toHaveLength(2);
+    expect(transformed.some((message) => message.id === "critic-partial")).toBe(false);
+  });
+
   test("keeps non-/done critic feedback as a user-context message", () => {
     const history = [
       createMuxMessage("user-1", "user", "Implement feature"),

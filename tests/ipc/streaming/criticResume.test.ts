@@ -9,6 +9,7 @@ import {
   waitFor,
   createStreamCollector,
 } from "../helpers";
+import type { MockAiRouterRequest } from "@/node/services/mock/mockAiRouter";
 
 describe("resumeStream critic turn continuity", () => {
   let env: TestEnvironment | null = null;
@@ -47,7 +48,12 @@ describe("resumeStream critic turn continuity", () => {
     collector.start();
 
     const requestKinds: Array<"actor" | "critic"> = [];
+    const actorRequests: MockAiRouterRequest[] = [];
     let criticCalls = 0;
+    const requiredToolPolicy: MockAiRouterRequest["toolPolicy"] = [
+      { regex_match: "bash", action: "require" },
+    ];
+    const actorInstructions = "Preserve actor loop settings";
 
     const router = env.services.aiService.getMockRouter();
     expect(router).not.toBeNull();
@@ -67,14 +73,19 @@ describe("resumeStream critic turn continuity", () => {
             };
           }
 
+          if (criticCalls === 2) {
+            return { assistantText: "Needs stronger test coverage." };
+          }
+
           return { assistantText: "/done" };
         },
       },
       {
         match: (request) => request.isCriticTurn !== true,
-        respond: () => {
+        respond: (request) => {
           requestKinds.push("actor");
-          return { assistantText: "Actor baseline response." };
+          actorRequests.push(structuredClone(request));
+          return { assistantText: `Actor baseline response ${actorRequests.length}.` };
         },
       },
     ]);
@@ -89,6 +100,8 @@ describe("resumeStream critic turn continuity", () => {
         HAIKU_MODEL,
         {
           criticEnabled: true,
+          toolPolicy: requiredToolPolicy,
+          additionalSystemInstructions: actorInstructions,
         }
       );
       expect(sendResult.success).toBe(true);
@@ -140,9 +153,29 @@ describe("resumeStream critic turn continuity", () => {
         throw new Error("Did not observe routed resume request");
       }
 
+      const observedResumedActorTurn = await waitFor(() => actorRequests.length >= 2, 20000);
+      if (!observedResumedActorTurn) {
+        throw new Error("Resumed critic turn did not trigger a follow-up actor turn");
+      }
+
+      const resumedActorRequest = actorRequests[1];
+      if (!resumedActorRequest) {
+        throw new Error("Missing resumed actor request");
+      }
+
+      // Regression: criticLoopState must survive abort/resume so the auto actor turn keeps
+      // the original actor options instead of inheriting critic-only settings.
+      expect(resumedActorRequest.toolPolicy).toEqual(requiredToolPolicy);
+      expect(resumedActorRequest.additionalSystemInstructions).toBe(actorInstructions);
+
+      const criticLoopSettled = await waitFor(() => criticCalls >= 3, 20000);
+      if (!criticLoopSettled) {
+        throw new Error("Critic loop did not reach /done after resumed actor turn");
+      }
+
       expect(requestKinds[0]).toBe("actor");
       expect(requestKinds[1]).toBe("critic");
-      // Regression check: resume must continue critic turn, not switch to actor.
+      // Resume must continue critic turn, not switch straight to actor.
       expect(requestKinds[2]).toBe("critic");
     } finally {
       collector.stop();

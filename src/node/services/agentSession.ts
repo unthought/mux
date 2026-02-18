@@ -2222,9 +2222,19 @@ export class AgentSession {
 
       this.setTurnPhase(TurnPhase.COMPLETING);
       const hadCompactionRequest = this.activeCompactionRequest !== undefined;
+      const activeOptions = this.activeStreamContext?.options;
       this.activeCompactionRequest = undefined;
       this.resetActiveStreamState();
-      this.clearCriticLoopState();
+
+      // Preserve critic loop state across aborts for critic-enabled turns so a resumed
+      // critic stream can continue using the original actor options (tool policy,
+      // additional instructions, etc.) captured when the loop started.
+      const shouldPreserveCriticLoopState =
+        activeOptions?.isCriticTurn === true || activeOptions?.criticEnabled === true;
+      if (!shouldPreserveCriticLoopState) {
+        this.clearCriticLoopState();
+      }
+
       if (hadCompactionRequest && !this.disposed) {
         this.clearQueue();
       }
