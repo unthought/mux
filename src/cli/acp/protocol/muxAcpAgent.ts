@@ -1,3 +1,4 @@
+import * as path from "path";
 import { PROTOCOL_VERSION, type Agent, type AgentSideConnection } from "@agentclientprotocol/sdk";
 import type * as schema from "@agentclientprotocol/sdk";
 import type { RouterClient } from "@orpc/server";
@@ -26,9 +27,17 @@ import {
 import { SessionStateMap, type SessionState } from "../sessionState";
 import { pumpOnChatToAcpUpdates } from "../streamPump";
 
+function canonicalizeCwdForComparison(cwd: string): string {
+  const normalized = path.resolve(path.normalize(cwd.trim()));
+  return process.platform === "win32" ? normalized.toLowerCase() : normalized;
+}
+
 /** Check if a session's project path or named worktree path matches the given cwd. */
 function sessionMatchesCwd(session: SessionState, cwd: string): boolean {
-  return session.projectPath === cwd || session.namedWorkspacePath === cwd;
+  const expected = canonicalizeCwdForComparison(cwd);
+  return [session.projectPath, session.namedWorkspacePath]
+    .map(canonicalizeCwdForComparison)
+    .includes(expected);
 }
 
 interface MuxAcpAgentOptions {

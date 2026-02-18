@@ -8,6 +8,7 @@ import { parseThinkingDisplayLabel } from "@/common/types/thinking";
 import { defaultModel, resolveModelAlias } from "@/common/utils/ai/models";
 import assert from "@/common/utils/assert";
 import { validateWorkspaceName } from "@/common/utils/validation/workspaceValidation";
+import { detectDefaultTrunkBranch } from "@/node/git";
 import type { AppRouter } from "@/node/orpc/router";
 import { resolveModeId, resolveThinkingLevel } from "./configOptions";
 import type { SessionState } from "../sessionState";
@@ -259,9 +260,20 @@ export async function createWorkspaceBackedSession(
   const meta = parseMuxMeta(params._meta ?? undefined);
 
   const runtimeConfig = meta.runtimeConfig;
+
+  let trunkBranch = meta.trunkBranch;
+  if (!trunkBranch && !runtimeConfig) {
+    try {
+      trunkBranch = await detectDefaultTrunkBranch(projectPath);
+    } catch {
+      // Best-effort auto-detection for default runtime path. If detection fails,
+      // allow backend validation to return the canonical creation error.
+    }
+  }
+
   // For non-local runtimes (worktree/ssh/etc.), the backend requires a trunk branch.
-  // Let the backend pick its default runtime + trunk behavior when runtimeConfig is omitted.
-  const trunkBranch = meta.trunkBranch;
+  // Let the backend pick its default runtime when runtimeConfig is omitted, but
+  // proactively provide a detected trunk when available to keep session/new working.
   if (runtimeConfig && runtimeConfig.type !== "local" && !trunkBranch) {
     throw new Error(
       `Trunk branch (_meta.mux.trunkBranch) is required for non-local runtimes (type: "${runtimeConfig.type}"). ` +

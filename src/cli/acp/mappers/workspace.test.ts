@@ -257,7 +257,6 @@ describe("createWorkspaceBackedSession", () => {
         }
       | undefined;
     expect(createArg?.runtimeConfig).toBeUndefined();
-    expect(createArg?.trunkBranch).toBeUndefined();
     expect(createArg?.branchName).toMatch(/^acp-[a-z0-9]+-[a-z0-9]+$/);
 
     expect(session.modeId).toBe("plan");
