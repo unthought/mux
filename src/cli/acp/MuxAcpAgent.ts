@@ -475,7 +475,12 @@ export class MuxAcpAgent implements AcpAgent {
     switch (params.configId) {
       case CONFIG_ID_AGENT_ID: {
         const modeResult = await this.getModeOptions(session.projectPath, session.workspaceId);
-        if (!modeResult.options.some((option) => option.id === params.value)) {
+        // Accept both discovered agents and the session's current agent (which may
+        // have been injected into the UI during fallback agent discovery).
+        const isKnownAgent =
+          modeResult.options.some((option) => option.id === params.value) ||
+          params.value === session.agentId;
+        if (!isKnownAgent) {
           throw this.deps.sdk.RequestError.invalidParams(
             undefined,
             `Unknown agent option: ${params.value}`
@@ -567,7 +572,12 @@ export class MuxAcpAgent implements AcpAgent {
     }
 
     const modeResult = await this.getModeOptions(session.projectPath, session.workspaceId);
-    if (!modeResult.options.some((option) => option.id === params.modeId)) {
+    // Accept both discovered modes and the session's current agent (which may
+    // have been injected into the UI during fallback agent discovery).
+    const isKnownMode =
+      modeResult.options.some((option) => option.id === params.modeId) ||
+      params.modeId === session.agentId;
+    if (!isKnownMode) {
       throw this.deps.sdk.RequestError.invalidParams(undefined, `Unknown mode: ${params.modeId}`);
     }
 
