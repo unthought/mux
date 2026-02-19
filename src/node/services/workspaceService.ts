@@ -3351,6 +3351,11 @@ export class WorkspaceService extends EventEmitter {
       const session = this.getOrCreateSession(workspaceId);
       const resolvedOptions = this.resolveExperimentFlags(options);
       const normalizedOptions = this.normalizeSendMessageAgentId(resolvedOptions);
+
+      // Mirror sendMessage bookkeeping: update recency + persist AI settings
+      void this.updateRecencyTimestamp(workspaceId);
+      await this.maybePersistAISettingsFromOptions(workspaceId, normalizedOptions, "send");
+
       return await session.startCriticLoop(normalizedOptions);
     } catch (error) {
       const errorMessage = getErrorMessage(error);
