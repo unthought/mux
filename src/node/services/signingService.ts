@@ -102,6 +102,36 @@ async function isSshAgentModuleAvailable(): Promise<boolean> {
   return sshAgentModuleAvailable;
 }
 
+const GH_AUTH_STATUS_TIMEOUT_MS = 2_000;
+
+async function withTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+  timeoutMessage: string
+): Promise<T> {
+  assert(
+    Number.isInteger(timeoutMs) && timeoutMs > 0,
+    "withTimeout: timeoutMs must be a positive integer"
+  );
+
+  let timeoutId: ReturnType<typeof setTimeout> | null = null;
+
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((_, reject) => {
+        timeoutId = setTimeout(() => {
+          reject(new Error(timeoutMessage));
+        }, timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timeoutId !== null) {
+      clearTimeout(timeoutId);
+    }
+  }
+}
+
 const AGENT_KEY_TYPE_PRIORITY: Record<MuxMdKeyType, number> = {
   ed25519: 0,
   "ecdsa-p256": 1,
@@ -531,7 +561,11 @@ export class SigningService {
     // Detect GitHub username via CLI
     try {
       using proc = execAsync("gh auth status 2>&1");
-      const { stdout } = await proc.result;
+      const { stdout } = await withTimeout(
+        proc.result,
+        GH_AUTH_STATUS_TIMEOUT_MS,
+        "gh auth status timed out"
+      );
 
       const accountMatch = /account\s+(\S+)/i.exec(stdout);
       if (accountMatch) {
@@ -548,6 +582,9 @@ export class SigningService {
       if (message.includes("command not found") || message.includes("ENOENT")) {
         log.info("[SigningService] gh CLI not installed");
         error = "GitHub CLI not installed (brew install gh)";
+      } else if (message.includes("timed out")) {
+        log.info("[SigningService] gh auth status timed out");
+        error = "GitHub CLI check timed out";
       } else {
         log.info("[SigningService] gh auth status failed:", message);
         error = "GitHub CLI error";

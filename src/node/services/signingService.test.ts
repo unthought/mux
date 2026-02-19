@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from "bun:test";
 import { parsePublicKey, verifySignature, type SignatureEnvelope } from "@coder/mux-md-client";
 import { execSync } from "child_process";
-import { mkdirSync, rmSync } from "fs";
+import { mkdirSync, rmSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 import { SigningService } from "./signingService";
@@ -104,6 +104,39 @@ describe("SigningService", () => {
 
         expect(capabilities.publicKey).toBeDefined();
         expect(capabilities.publicKey).toStartWith("ssh-ed25519 ");
+      }));
+
+    it("times out slow gh auth status checks", () =>
+      withoutSshAgent(async () => {
+        if (process.platform === "win32") {
+          return;
+        }
+
+        const fakeBinDir = join(testDir, "fake-bin-gh-timeout");
+        const fakeGhPath = join(fakeBinDir, "gh");
+        mkdirSync(fakeBinDir, { recursive: true });
+        writeFileSync(fakeGhPath, "#!/bin/sh\nsleep 10\n", { mode: 0o755 });
+
+        const prevPath = process.env.PATH;
+        process.env.PATH = `${fakeBinDir}:${prevPath ?? ""}`;
+
+        try {
+          const startedAt = Date.now();
+          const service = new SigningService([ed25519KeyPath]);
+          const capabilities = await service.getCapabilities();
+          const durationMs = Date.now() - startedAt;
+
+          expect(durationMs).toBeLessThan(6_000);
+          expect(capabilities.publicKey).toStartWith("ssh-ed25519 ");
+          expect(capabilities.error?.message).toBe("GitHub CLI check timed out");
+        } finally {
+          if (prevPath === undefined) {
+            delete process.env.PATH;
+          } else {
+            process.env.PATH = prevPath;
+          }
+          rmSync(fakeBinDir, { recursive: true, force: true });
+        }
       }));
 
     it("should sign messages", () =>
