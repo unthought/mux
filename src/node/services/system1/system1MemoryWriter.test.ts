@@ -349,6 +349,96 @@ describe("system1MemoryWriter", () => {
     }
   });
 
+  it("ignores no_new_memories after a failed memory_write in the same attempt", async () => {
+    const runtime = createRuntime({ type: "local", srcBaseDir: process.cwd() });
+
+    const projectDir = await fs.mkdtemp(path.join(os.tmpdir(), "system1-memory-project-"));
+    const muxRoot = await fs.mkdtemp(path.join(os.tmpdir(), "system1-memory-root-"));
+
+    const previousMuxRoot = process.env.MUX_ROOT;
+    process.env.MUX_ROOT = muxRoot;
+
+    try {
+      await fs.writeFile(path.join(muxRoot, "AGENTS.md"), "# Global\n", "utf8");
+      await fs.writeFile(path.join(projectDir, "AGENTS.md"), "# Agents\n", "utf8");
+
+      const { memoriesDir, memoryPath } = getMemoryFilePathForProject(projectDir);
+      await fs.mkdir(memoriesDir, { recursive: true });
+      await fs.writeFile(memoryPath, "old", "utf8");
+
+      let calls = 0;
+
+      const result = await runSystem1WriteProjectMemories({
+        runtime,
+        agentDiscoveryPath: projectDir,
+        runtimeTempDir: os.tmpdir(),
+        model: {} as unknown as LanguageModel,
+        modelString: "openai:gpt-5.1-codex-mini",
+        providerOptions: {},
+        workspaceId: "ws_1",
+        workspaceName: "main",
+        triggerMessageId: "assistant-test",
+        projectPath: projectDir,
+        workspacePath: projectDir,
+        history: [],
+        timeoutMs: 5_000,
+        generateTextImpl: async (args) => {
+          calls += 1;
+
+          const messages = (args as { messages?: unknown }).messages as
+            | Array<{ content?: unknown }>
+            | undefined;
+          expect(Array.isArray(messages)).toBe(true);
+
+          const tools = (args as { tools?: unknown }).tools as Record<string, unknown> | undefined;
+          const writeTool = tools!.memory_write as {
+            execute: (input: unknown, options: unknown) => Promise<unknown>;
+          };
+          const noNewMemoriesTool = tools!.no_new_memories as {
+            execute: (input: unknown, options: unknown) => Promise<unknown>;
+          };
+
+          if (calls === 1) {
+            expect(messages!.length).toBe(1);
+
+            const staleWrite = (await writeTool.execute(
+              { old_string: "stale", new_string: "new" },
+              {}
+            )) as { success?: unknown };
+            expect(staleWrite.success).toBe(false);
+
+            await noNewMemoriesTool.execute({}, {});
+            return { finishReason: "stop" };
+          }
+
+          expect(messages!.length).toBe(2);
+          expect(messages![1]?.content).toBe(
+            "Reminder: You MUST call memory_write to persist updates, or call no_new_memories when no memory update is needed. Do not output prose."
+          );
+
+          await writeTool.execute({ old_string: "old", new_string: "new" }, {});
+          return { finishReason: "stop" };
+        },
+      });
+
+      expect(calls).toBe(2);
+      expect(result).toEqual({
+        finishReason: "stop",
+        timedOut: false,
+        memoryAction: "memory_write",
+      });
+      expect(await fs.readFile(memoryPath, "utf8")).toBe("new");
+    } finally {
+      if (previousMuxRoot === undefined) {
+        delete process.env.MUX_ROOT;
+      } else {
+        process.env.MUX_ROOT = previousMuxRoot;
+      }
+      await fs.rm(projectDir, { recursive: true, force: true });
+      await fs.rm(muxRoot, { recursive: true, force: true });
+    }
+  });
+
   it("retries once with a reminder if the model does not call a required memory tool", async () => {
     const runtime = createRuntime({ type: "local", srcBaseDir: process.cwd() });
 

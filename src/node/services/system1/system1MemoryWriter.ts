@@ -405,6 +405,7 @@ export async function runSystem1WriteProjectMemories(
       const messages = attemptMessages[attemptIndex];
       let wrote = false;
       let noNewMemories = false;
+      let memoryWriteFailed = false;
 
       const stepResults: unknown[] = [];
       const toolExecutions: MemoryWriterToolExecutionEvent[] = [];
@@ -460,6 +461,8 @@ export async function runSystem1WriteProjectMemories(
               const successValue = (result as { success?: unknown }).success;
               if (successValue === true) {
                 wrote = true;
+              } else {
+                memoryWriteFailed = true;
               }
             }
 
@@ -487,6 +490,10 @@ export async function runSystem1WriteProjectMemories(
 
             return result;
           } catch (error) {
+            if (toolName === "memory_write") {
+              memoryWriteFailed = true;
+            }
+
             toolExecutions.push({
               attemptIndex: attemptDebug.attemptIndex,
               toolName,
@@ -557,7 +564,10 @@ export async function runSystem1WriteProjectMemories(
         };
       }
 
-      if (noNewMemories) {
+      // If the model attempted memory_write and it failed (for example stale CAS
+      // old_string), ignore no_new_memories from the same attempt and retry with
+      // the explicit policy reminder.
+      if (noNewMemories && !memoryWriteFailed) {
         satisfiedMemoryToolPolicy = true;
         attemptDebug.noNewMemories = true;
         return {
