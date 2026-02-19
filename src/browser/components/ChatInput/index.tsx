@@ -1831,7 +1831,9 @@ const ChatInputInner: React.FC<ChatInputProps> = (props) => {
       // Save the prompt and start the critic loop against existing history.
       // Guards: require non-empty prompt text, and don't start if a stream is already active
       // (that would abort the in-progress output via StreamManager.startStream).
-      const isCriticModeActive = variant === "workspace" && criticEnabled;
+      // Skip the critic-loop path when submitting a message edit — edits must go through
+      // the normal edit-send flow, not start a new critic loop.
+      const isCriticModeActive = variant === "workspace" && criticEnabled && !editingMessage;
       if (isCriticModeActive) {
         // In critic mode, ONLY allow /commands to fall through to normal handling.
         // All other input is treated as critic instructions — never sent as user messages.
