@@ -1829,12 +1829,12 @@ const ChatInputInner: React.FC<ChatInputProps> = (props) => {
 
       // In critic mode, the textarea text is the critic prompt, not a user message.
       // Save the prompt and start the critic loop against existing history.
-      // Read directly from storage to avoid stale React closures (e.g., when /critic
-      // was just toggled in the same tick and state hasn't re-rendered yet).
-      // Use the React state directly — it's synced with localStorage via usePersistedState.
-      // The closure captures the latest value from the most recent render.
+      // Guards: require non-empty prompt text, and don't start if a stream is already active
+      // (that would abort the in-progress output via StreamManager.startStream).
       const isCriticModeActive = variant === "workspace" && criticEnabled;
-      if (isCriticModeActive && api && workspaceId) {
+      const isStreamActive =
+        variant === "workspace" && (isStreamStarting || (props.canInterrupt ?? false));
+      if (isCriticModeActive && api && workspaceId && messageText && !isStreamActive) {
         setCriticPrompt(messageText);
         setInput("");
         if (inputRef.current) {
