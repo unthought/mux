@@ -136,12 +136,18 @@ export class MemoryWriterPolicy {
     });
 
     if (ctx.system1Enabled !== true) {
+      // Clear any stale eligible context so an in-flight run completion cannot
+      // schedule a deferred run after the user opts out.
+      this.latestContextByWorkspace.delete(ctx.workspaceId);
       workspaceLog.debug("[system1][memory] Skipping memory writer scheduling (System 1 disabled)");
       return;
     }
 
     // Avoid polluting project memories with child task workspaces.
     if (ctx.parentWorkspaceId) {
+      // Defensive: child workspaces should never inherit a previous eligible
+      // context from the same workspace ID.
+      this.latestContextByWorkspace.delete(ctx.workspaceId);
       workspaceLog.debug("[system1][memory] Skipping memory writer scheduling (child workspace)", {
         parentWorkspaceId: ctx.parentWorkspaceId,
       });
@@ -317,6 +323,12 @@ export class MemoryWriterPolicy {
 
     const latestCtx = this.latestContextByWorkspace.get(workspaceId);
     if (!latestCtx) {
+      return;
+    }
+
+    // Re-check the same guard conditions as onAssistantStreamEnd before launching
+    // a deferred run from cached context.
+    if (latestCtx.system1Enabled !== true || latestCtx.parentWorkspaceId) {
       return;
     }
 
