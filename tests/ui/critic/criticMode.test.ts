@@ -769,11 +769,15 @@ describeIntegration("Actor-Critic mode", () => {
         15_000
       );
 
-      // Then critic evaluates and says /done
-      await app.chat.expectStreamComplete(20_000);
-
-      // Verify ordering: actor first, then critic
-      expect(requestKinds).toEqual(["actor", "critic"]);
+      // Wait for both turns to complete. Don't use expectStreamComplete alone here
+      // because there's a brief idle gap between actor completion and critic startup
+      // that could cause a race.
+      await waitFor(
+        () => {
+          expect(requestKinds).toEqual(["actor", "critic"]);
+        },
+        { timeout: 20_000 }
+      );
 
       // The seeded user message should be visible in the transcript
       await app.chat.expectTranscriptContains("Build a REST API with proper error handling");
