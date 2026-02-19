@@ -35,43 +35,17 @@ interface ServiceContainerWithHistory {
 }
 
 const describeIntegration = shouldRunIntegrationTests() ? describe : describe.skip;
-const CRITIC_PROMPT_PLACEHOLDER = "Critic prompt (optional)";
 
 function getHistoryService(app: AppHarness): HistoryService {
   return (app.env.services as unknown as ServiceContainerWithHistory).historyService;
 }
 
-async function findCriticPromptInput(app: AppHarness): Promise<HTMLInputElement> {
-  return waitFor(
-    () => {
-      const input = app.view.container.querySelector(
-        `input[placeholder="${CRITIC_PROMPT_PLACEHOLDER}"]`
-      ) as HTMLInputElement | null;
-      if (!input) {
-        throw new Error("Critic prompt input not found");
-      }
-      return input;
-    },
-    { timeout: 10_000 }
-  );
-}
-
-async function setCriticPromptFromUi(app: AppHarness, prompt: string): Promise<void> {
-  const promptInput = await findCriticPromptInput(app);
-  fireEvent.change(promptInput, { target: { value: prompt } });
-
-  await waitFor(
-    () => {
-      const updatedInput = app.view.container.querySelector(
-        `input[placeholder="${CRITIC_PROMPT_PLACEHOLDER}"]`
-      ) as HTMLInputElement | null;
-      if (!updatedInput) {
-        throw new Error("Critic prompt input disappeared after change");
-      }
-      expect(updatedInput.value).toBe(prompt);
-    },
-    { timeout: 5_000 }
-  );
+function getTextarea(app: AppHarness): HTMLTextAreaElement {
+  const textarea = app.view.container.querySelector("textarea") as HTMLTextAreaElement | null;
+  if (!textarea) {
+    throw new Error("Textarea not found");
+  }
+  return textarea;
 }
 
 async function stopStreamingFromUi(app: AppHarness): Promise<void> {
@@ -96,7 +70,7 @@ describeIntegration("Actor-Critic mode", () => {
     await preloadTestModules();
   });
 
-  test("/critic toggles critic mode and shows ChatInput badge", async () => {
+  test("/critic toggles critic mode badge and textarea placeholder", async () => {
     const app = await createAppHarness({ branchPrefix: "critic-toggle" });
 
     try {
@@ -107,6 +81,9 @@ describeIntegration("Actor-Critic mode", () => {
 
       expect(footer()?.textContent ?? "").not.toContain("Critic mode active");
       expect(window.localStorage.getItem(getCriticEnabledKey(app.workspaceId))).toBeNull();
+
+      // Before enabling critic mode, placeholder is the default
+      expect(getTextarea(app).placeholder).not.toContain("Critic");
 
       await app.chat.send("/critic");
 
@@ -119,6 +96,15 @@ describeIntegration("Actor-Critic mode", () => {
 
       expect(window.localStorage.getItem(getCriticEnabledKey(app.workspaceId))).toBe("true");
 
+      // In critic mode, placeholder indicates the input is for critic instructions
+      expect(getTextarea(app).placeholder).toContain("Critic");
+
+      // No separate inline critic prompt input — the main textarea IS the critic prompt
+      const inlineInput = app.view.container.querySelector(
+        'input[placeholder="Critic prompt (optional)"]'
+      );
+      expect(inlineInput).toBeNull();
+
       await app.chat.send("/critic");
 
       await waitFor(
@@ -129,6 +115,9 @@ describeIntegration("Actor-Critic mode", () => {
       );
 
       expect(window.localStorage.getItem(getCriticEnabledKey(app.workspaceId))).toBe("false");
+
+      // After disabling, placeholder reverts to default
+      expect(getTextarea(app).placeholder).not.toContain("Critic");
     } finally {
       await app.dispose();
     }
@@ -166,9 +155,12 @@ describeIntegration("Actor-Critic mode", () => {
     }
   }, 60_000);
 
-  test("critic prompt is forwarded into critic turn instructions", async () => {
+  test("message text becomes critic prompt when sent in critic mode", async () => {
     const app = await createAppHarness({ branchPrefix: "critic-prompt" });
 
+    // In critic mode, the main textarea text IS the critic prompt.
+    // No separate inline input — the user types critic instructions
+    // in the main textarea and sends.
     const criticPrompt = "Focus on correctness and edge cases.";
 
     const criticRequests: MockAiRouterRequest[] = [];
@@ -187,8 +179,9 @@ describeIntegration("Actor-Critic mode", () => {
 
     try {
       await app.chat.send("/critic");
-      await setCriticPromptFromUi(app, criticPrompt);
-      await app.chat.send("Review this implementation");
+      // Send the critic instructions as the message — it becomes both the
+      // user message (actor sees it) and the critic prompt (critic evaluates with it).
+      await app.chat.send(criticPrompt);
 
       await waitFor(
         () => {
@@ -399,6 +392,7 @@ describeIntegration("Actor-Critic mode", () => {
   test("critic context_exceeded auto-compacts and preserves critic settings", async () => {
     const app = await createAppHarness({ branchPrefix: "critic-context-recovery" });
 
+    // The message text IS the critic prompt in the new UX model.
     const criticPrompt = "Demand stronger invariants before approving.";
 
     const criticRequests: MockAiRouterRequest[] = [];
@@ -436,8 +430,8 @@ describeIntegration("Actor-Critic mode", () => {
 
     try {
       await app.chat.send("/critic");
-      await setCriticPromptFromUi(app, criticPrompt);
-      await app.chat.send("Build a resilient parser");
+      // Send critic instructions as the message — becomes the critic prompt.
+      await app.chat.send(criticPrompt);
 
       await app.chat.expectTranscriptContains("Mock compaction summary:", 90_000);
 
@@ -448,6 +442,7 @@ describeIntegration("Actor-Critic mode", () => {
         { timeout: 90_000 }
       );
 
+      // Critic prompt must survive context_exceeded recovery.
       const resumedCriticRequest = criticRequests[criticRequests.length - 1];
       expect(resumedCriticRequest?.isCriticTurn).toBe(true);
       expect(resumedCriticRequest?.criticPrompt).toBe(criticPrompt);

@@ -189,7 +189,7 @@ const ChatInputInner: React.FC<ChatInputProps> = (props) => {
       listener: true,
     }
   );
-  const [criticPrompt, setCriticPrompt] = usePersistedState<string>(criticPromptStorageKey, "", {
+  const [, setCriticPrompt] = usePersistedState<string>(criticPromptStorageKey, "", {
     listener: true,
   });
 
@@ -2080,12 +2080,21 @@ const ChatInputInner: React.FC<ChatInputProps> = (props) => {
           rawThinkingOverride != null
             ? resolveThinkingInput(rawThinkingOverride, policyModel)
             : undefined;
+        // In critic mode, the message text IS the critic prompt.
+        // Persist it for resumability (context recovery, etc.) and override the send options.
+        if (criticEnabled && messageText) {
+          setCriticPrompt(messageText);
+        }
+
         const sendOptions = {
           ...sendMessageOptions,
           ...compactionOptions,
           ...(modelOverride ? { model: modelOverride } : {}),
           ...(thinkingOverride ? { thinkingLevel: thinkingOverride } : {}),
           ...(modelOneShot ? { skipAiSettingsPersistence: true } : {}),
+          // When critic mode is on, use the message text as the critic prompt
+          // (overrides whatever was in sendMessageOptions from storage).
+          ...(criticEnabled && messageText ? { criticPrompt: messageText } : {}),
           additionalSystemInstructions,
           editMessageId: editingMessage?.id,
           fileParts: sendFileParts,
@@ -2296,6 +2305,11 @@ const ChatInputInner: React.FC<ChatInputProps> = (props) => {
       return `Compacting... (${formatKeybind(interruptKeybind)} cancel | ${formatKeybind(KEYBINDS.SEND_MESSAGE)} to queue)`;
     }
 
+    // In critic mode, the main textarea IS the critic prompt input.
+    if (variant === "workspace" && criticEnabled) {
+      return "Critic instructions...";
+    }
+
     // Keep placeholder minimal; shortcut hints are rendered below the input.
     return "Type a message...";
   })();
@@ -2484,22 +2498,11 @@ const ChatInputInner: React.FC<ChatInputProps> = (props) => {
 
           <div className="flex flex-col gap-0.5" data-component="ChatModeToggles">
             {variant === "workspace" && criticEnabled && (
-              <div className="flex items-center gap-2" data-component="CriticModeRow">
-                <div
-                  data-component="CriticBadge"
-                  className="text-exec-mode bg-exec-mode/10 inline-flex items-center rounded-sm px-1.5 py-0.5 text-[11px] font-medium"
-                >
-                  Critic mode active
-                </div>
-                <input
-                  type="text"
-                  value={criticPrompt}
-                  onChange={(event) => {
-                    setCriticPrompt(event.target.value);
-                  }}
-                  placeholder="Critic prompt (optional)"
-                  className="border-border bg-background/40 text-muted focus:text-foreground h-6 min-w-0 flex-1 rounded-sm border px-2 text-[11px]"
-                />
+              <div
+                data-component="CriticBadge"
+                className="text-exec-mode bg-exec-mode/10 inline-flex items-center rounded-sm px-1.5 py-0.5 text-[11px] font-medium"
+              >
+                Critic mode active
               </div>
             )}
 
