@@ -1832,9 +1832,18 @@ const ChatInputInner: React.FC<ChatInputProps> = (props) => {
       // Guards: require non-empty prompt text, and don't start if a stream is already active
       // (that would abort the in-progress output via StreamManager.startStream).
       const isCriticModeActive = variant === "workspace" && criticEnabled;
-      const isStreamActive =
-        variant === "workspace" && (isStreamStarting || (props.canInterrupt ?? false));
-      if (isCriticModeActive && api && workspaceId && messageText && !isStreamActive) {
+      if (isCriticModeActive) {
+        // In critic mode, ONLY allow /commands to fall through to normal handling.
+        // All other input is treated as critic instructions — never sent as user messages.
+        const isStreamActive = isStreamStarting || (props.canInterrupt ?? false);
+        if (!api || !workspaceId || !messageText || isStreamActive) {
+          if (isStreamActive) {
+            pushToast({ type: "error", message: "Wait for the current response to finish" });
+          }
+          return;
+        }
+      }
+      if (isCriticModeActive && api && workspaceId) {
         setCriticPrompt(messageText);
         setInput("");
         if (inputRef.current) {

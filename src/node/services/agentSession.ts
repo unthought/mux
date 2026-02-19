@@ -2019,6 +2019,17 @@ export class AgentSession {
   async startCriticLoop(options: SendMessageOptions): Promise<Result<void, SendMessageError>> {
     this.assertNotDisposed("startCriticLoop");
 
+    // Preflight: critic needs existing history to evaluate. A fresh workspace with
+    // no messages will fail in streamWithHistory ("history is empty"), so bail early
+    // with a user-friendly message.
+    const historyCheck = await this.historyService.getHistoryFromLatestBoundary(this.workspaceId);
+    if (!historyCheck.success || historyCheck.data.length === 0) {
+      return Err({
+        type: "unknown" as const,
+        raw: "Send a message first — the critic needs conversation history to review.",
+      });
+    }
+
     // Build actor-equivalent options (the "baseline" the loop will use for actor turns)
     const actorOptions = this.cloneSendMessageOptions({
       ...options,
