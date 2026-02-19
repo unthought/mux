@@ -3307,6 +3307,29 @@ export class WorkspaceService extends EventEmitter {
     }
   }
 
+  /**
+   * Start a critic loop without sending a user message. The critic evaluates the
+   * existing conversation history. Delegates to AgentSession.startCriticLoop.
+   */
+  async startCriticLoop(
+    workspaceId: string,
+    options: SendMessageOptions
+  ): Promise<Result<void, SendMessageError>> {
+    try {
+      if (!this.config.findWorkspace(workspaceId)) {
+        return Err({ type: "unknown", raw: "Workspace not found." });
+      }
+
+      const session = this.getOrCreateSession(workspaceId);
+      const normalizedOptions = this.normalizeSendMessageAgentId(options);
+      return await session.startCriticLoop(normalizedOptions);
+    } catch (error) {
+      const errorMessage = getErrorMessage(error);
+      log.error("Unexpected error in startCriticLoop:", error);
+      return Err({ type: "unknown", raw: `Failed to start critic loop: ${errorMessage}` });
+    }
+  }
+
   async interruptStream(
     workspaceId: string,
     options?: { soft?: boolean; abandonPartial?: boolean; sendQueuedImmediately?: boolean }

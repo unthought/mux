@@ -2011,6 +2011,43 @@ export class AgentSession {
     };
   }
 
+  /**
+   * Start a critic loop without sending a user message. The critic evaluates the
+   * existing conversation history using the provided options as the "actor baseline"
+   * for the loop. After the critic turn, maybeContinueActorCriticLoop takes over.
+   */
+  async startCriticLoop(options: SendMessageOptions): Promise<Result<void, SendMessageError>> {
+    this.assertNotDisposed("startCriticLoop");
+
+    // Build actor-equivalent options (the "baseline" the loop will use for actor turns)
+    const actorOptions = this.cloneSendMessageOptions({
+      ...options,
+      criticEnabled: true,
+      isCriticTurn: false,
+    });
+
+    // Save as criticLoopState so maybeContinueActorCriticLoop can build actor turns
+    this.criticLoopState = {
+      modelString: options.model,
+      actorOptions,
+    };
+
+    const criticOptions = this.buildCriticTurnOptions(actorOptions);
+
+    this.setTurnPhase(TurnPhase.PREPARING);
+    try {
+      const result = await this.streamWithHistory(options.model, criticOptions);
+      if (!result.success) {
+        return result;
+      }
+      return Ok(undefined);
+    } finally {
+      if (this.turnPhase === TurnPhase.PREPARING) {
+        this.setTurnPhase(TurnPhase.IDLE);
+      }
+    }
+  }
+
   private async startAutomaticCriticLoopTurn(
     modelString: string,
     options: SendMessageOptions,

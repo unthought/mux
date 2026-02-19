@@ -1827,6 +1827,35 @@ const ChatInputInner: React.FC<ChatInputProps> = (props) => {
         return;
       }
 
+      // In critic mode, the textarea text is the critic prompt, not a user message.
+      // Save the prompt and start the critic loop against existing history.
+      // Read directly from storage to avoid stale React closures (e.g., when /critic
+      // was just toggled in the same tick and state hasn't re-rendered yet).
+      // Use the React state directly — it's synced with localStorage via usePersistedState.
+      // The closure captures the latest value from the most recent render.
+      const isCriticModeActive = variant === "workspace" && criticEnabled;
+      if (isCriticModeActive && api && workspaceId) {
+        setCriticPrompt(messageText);
+        setInput("");
+        if (inputRef.current) {
+          inputRef.current.style.height = "";
+        }
+
+        const result = await api.workspace.startCriticLoop({
+          workspaceId,
+          options: {
+            ...sendMessageOptions,
+            criticEnabled: true,
+            criticPrompt: messageText,
+          },
+        });
+
+        if (!result.success) {
+          pushToast({ type: "error", message: "Failed to start critic loop" });
+        }
+        return;
+      }
+
       const modelOverride = modelOneShot?.modelString;
 
       // Regular message (or /<model-alias> one-shot override) - send directly via API
@@ -2080,23 +2109,14 @@ const ChatInputInner: React.FC<ChatInputProps> = (props) => {
           rawThinkingOverride != null
             ? resolveThinkingInput(rawThinkingOverride, policyModel)
             : undefined;
-        // In critic mode, the message text IS the critic prompt.
-        // Use the parsed send text (not raw input) so command prefixes like
-        // "/haiku" are stripped — the critic should evaluate what the actor sees.
-        // Persist for resumability (context recovery, etc.) and override send options.
-        if (criticEnabled && actualMessageText) {
-          setCriticPrompt(actualMessageText);
-        }
-
+        // Note: critic mode is handled above with an early return — this path is
+        // only reached for normal (non-critic) sends.
         const sendOptions = {
           ...sendMessageOptions,
           ...compactionOptions,
           ...(modelOverride ? { model: modelOverride } : {}),
           ...(thinkingOverride ? { thinkingLevel: thinkingOverride } : {}),
           ...(modelOneShot ? { skipAiSettingsPersistence: true } : {}),
-          // When critic mode is on, use the parsed send text as the critic prompt
-          // (overrides whatever was in sendMessageOptions from storage).
-          ...(criticEnabled && actualMessageText ? { criticPrompt: actualMessageText } : {}),
           additionalSystemInstructions,
           editMessageId: editingMessage?.id,
           fileParts: sendFileParts,
@@ -2603,7 +2623,7 @@ const ChatInputInner: React.FC<ChatInputProps> = (props) => {
                       type="button"
                       onClick={() => void handleSend()}
                       disabled={!canSend}
-                      aria-label="Send message"
+                      aria-label={criticEnabled ? "Set critic prompt" : "Send message"}
                       size="xs"
                       variant="ghost"
                       className={cn(
@@ -2619,7 +2639,7 @@ const ChatInputInner: React.FC<ChatInputProps> = (props) => {
                     </Button>
                   </TooltipTrigger>
                   <TooltipContent align="center">
-                    Send message{" "}
+                    {criticEnabled ? "Set critic prompt" : "Send message"}{" "}
                     <span className="mobile-hide-shortcut-hints">
                       ({formatKeybind(KEYBINDS.SEND_MESSAGE)})
                     </span>
