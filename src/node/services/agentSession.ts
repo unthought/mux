@@ -2019,6 +2019,15 @@ export class AgentSession {
   async startCriticLoop(options: SendMessageOptions): Promise<Result<void, SendMessageError>> {
     this.assertNotDisposed("startCriticLoop");
 
+    // Reject if a stream is already in flight — starting a new critic loop would
+    // cancel the active stream via StreamManager.startStream, losing in-progress output.
+    if (this.isBusy()) {
+      return Err({
+        type: "unknown" as const,
+        raw: "Cannot start critic loop while a response is in progress.",
+      });
+    }
+
     const historyCheck = await this.historyService.getHistoryFromLatestBoundary(this.workspaceId);
     const isEmptyHistory = !historyCheck.success || historyCheck.data.length === 0;
 

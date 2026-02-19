@@ -1860,7 +1860,13 @@ const ChatInputInner: React.FC<ChatInputProps> = (props) => {
         });
 
         if (!result.success) {
-          pushToast({ type: "error", message: "Failed to start critic loop" });
+          const errorDetail =
+            "raw" in result.error
+              ? result.error.raw
+              : "message" in result.error
+                ? result.error.message
+                : null;
+          pushToast({ type: "error", message: errorDetail ?? "Failed to start critic loop" });
         }
         return;
       }
