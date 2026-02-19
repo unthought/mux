@@ -106,13 +106,6 @@ export class MemoryWriterPolicy {
   private readonly stateByWorkspace = new Map<string, MemoryWriterSchedulingState>();
   private readonly queueByWorkspace = new Map<string, Promise<void>>();
   private readonly inFlightByWorkspace = new Map<string, Promise<void>>();
-  // Tracks the latest resolved System 1 gate from stream contexts per workspace.
-  // Deferred runs re-check this value at execution time instead of trusting any
-  // cached context that may have gone stale.
-  private readonly system1EnabledByWorkspace = new Map<string, boolean>();
-  // Keep the most recent eligible stream context so we can trigger a deferred run
-  // when turns reach the interval while another run is still in-flight.
-  private readonly latestContextByWorkspace = new Map<string, MemoryWriterStreamContext>();
   private readonly stateFileManager: SessionFileManager<MemoryWriterSchedulingState>;
 
   constructor(
@@ -139,21 +132,13 @@ export class MemoryWriterPolicy {
       messageId: ctx.messageId,
     });
 
-    this.system1EnabledByWorkspace.set(ctx.workspaceId, ctx.system1Enabled === true);
-
     if (ctx.system1Enabled !== true) {
-      // Clear any stale eligible context so an in-flight run completion cannot
-      // schedule a deferred run after the user opts out.
-      this.latestContextByWorkspace.delete(ctx.workspaceId);
       workspaceLog.debug("[system1][memory] Skipping memory writer scheduling (System 1 disabled)");
       return;
     }
 
     // Avoid polluting project memories with child task workspaces.
     if (ctx.parentWorkspaceId) {
-      // Defensive: child workspaces should never inherit a previous eligible
-      // context from the same workspace ID.
-      this.latestContextByWorkspace.delete(ctx.workspaceId);
       workspaceLog.debug("[system1][memory] Skipping memory writer scheduling (child workspace)", {
         parentWorkspaceId: ctx.parentWorkspaceId,
       });
@@ -171,10 +156,6 @@ export class MemoryWriterPolicy {
       });
       return;
     }
-
-    // Store the latest eligible context so we can run immediately after an
-    // in-flight memory writer completes, without waiting for another message.
-    this.latestContextByWorkspace.set(ctx.workspaceId, ctx);
 
     const scheduleResult = await this.enqueueWorkspaceUpdate(
       ctx.workspaceId,
@@ -307,40 +288,6 @@ export class MemoryWriterPolicy {
     return { runPromise };
   }
 
-  private async maybeStartDeferredRun(workspaceId: string): Promise<void> {
-    const inFlight = this.inFlightByWorkspace.get(workspaceId);
-    if (inFlight) {
-      return;
-    }
-
-    const taskSettings = this.config.loadConfigOrDefault().taskSettings ?? DEFAULT_TASK_SETTINGS;
-    const interval =
-      taskSettings.memoryWriterIntervalMessages ??
-      SYSTEM1_MEMORY_WRITER_LIMITS.memoryWriterIntervalMessages.default;
-
-    if (!Number.isInteger(interval) || interval <= 0) {
-      return;
-    }
-
-    const state = await this.getOrLoadState(workspaceId);
-    if (state.turnsSinceLastRun < interval) {
-      return;
-    }
-
-    const latestCtx = this.latestContextByWorkspace.get(workspaceId);
-    if (!latestCtx) {
-      return;
-    }
-
-    // Re-check the latest System 1 gate at execution time before launching a
-    // deferred run from cached context.
-    if (this.system1EnabledByWorkspace.get(workspaceId) !== true || latestCtx.parentWorkspaceId) {
-      return;
-    }
-
-    await this.startScheduledRun(latestCtx, state);
-  }
-
   private startRun(ctx: MemoryWriterStreamContext, runStartedAt: number): Promise<void> {
     const workspaceLog = log.withFields({
       workspaceId: ctx.workspaceId,
@@ -374,15 +321,6 @@ export class MemoryWriterPolicy {
         if (current === runPromise) {
           this.inFlightByWorkspace.delete(ctx.workspaceId);
         }
-
-        await this.enqueueWorkspaceUpdate(
-          ctx.workspaceId,
-          "maybe-start-deferred-run",
-          async () => {
-            await this.maybeStartDeferredRun(ctx.workspaceId);
-          },
-          undefined
-        );
       });
 
     this.inFlightByWorkspace.set(ctx.workspaceId, runPromise);
