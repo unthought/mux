@@ -143,7 +143,17 @@ class DisposableExec implements Disposable {
     // Check the child's actual exit state, not promise state (avoids async timing issues)
     const hasExited = this.child.exitCode !== null || this.child.signalCode !== null;
     if (!hasExited && !this.child.killed) {
-      this.child.kill();
+      const pid = this.child.pid;
+      if (pid !== undefined && pid > 0) {
+        try {
+          this.child.kill("SIGKILL");
+        } catch {
+          // Ignore races if the process exits between checks.
+        }
+        killProcessTree(pid);
+      } else {
+        this.child.kill();
+      }
     }
   }
 
