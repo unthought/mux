@@ -1544,6 +1544,16 @@ export function ProvidersSection() {
                       </Select>
                     </div>
 
+                    {openaiAuthMode === "entra" && (
+                      // Keep this explicit: Entra auth is environment-driven (DefaultAzureCredential),
+                      // so users should not look for a dedicated in-app Entra login button.
+                      <p className="text-muted text-xs">
+                        Entra keyless auth uses Azure credentials from your environment (for
+                        example, run az login locally, or use managed/workload identity in cloud).
+                        There is no separate Entra login button in Mux.
+                      </p>
+                    )}
+
                     <div>
                       <label className="text-foreground block text-xs font-medium">
                         ChatGPT (Codex) OAuth
