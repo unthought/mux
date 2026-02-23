@@ -109,15 +109,17 @@ describe("Compaction UI (mock AI router)", () => {
       const triggerMessage = "Trigger context error";
       const userDraft = "My draft message that should be preserved";
 
-      const triggerResult = await app.env.orpc.workspace.sendMessage({
+      const triggerPromise = app.env.orpc.workspace.sendMessage({
         workspaceId: app.workspaceId,
         message: triggerMessage,
         options: { model: COMPACTION_TEST_MODEL, agentId: WORKSPACE_DEFAULTS.agentId },
       });
-      expect(triggerResult.success).toBe(true);
 
-      // User starts typing while auto-compaction is in progress
+      // User starts typing while auto-compaction is in progress.
       await app.chat.typeWithoutSending(userDraft);
+
+      const triggerResult = await triggerPromise;
+      expect(triggerResult.success).toBe(true);
 
       await app.chat.expectTranscriptContains("Mock compaction summary:", 60_000);
       await app.chat.expectTranscriptContains(`Continue with: ${triggerMessage}`, 60_000);
