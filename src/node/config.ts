@@ -1249,7 +1249,9 @@ ${jsonString}`;
       "key" in value &&
       "value" in value &&
       typeof (value as { key?: unknown }).key === "string" &&
-      Config.isSecretValue((value as { value?: unknown }).value)
+      Config.isSecretValue((value as { value?: unknown }).value) &&
+      (!Object.prototype.hasOwnProperty.call(value, "injectAll") ||
+        typeof (value as { injectAll?: unknown }).injectAll === "boolean")
     );
   }
 
@@ -1361,16 +1363,31 @@ ${jsonString}`;
    * Get effective secrets for a project.
    *
    * Project secrets define which env vars are injected into this project/workspace.
-   * Global secrets are only used as a shared value store and are injected only when
-   * a project secret references them via `{ secret: "GLOBAL_KEY" }`.
+   * Global secrets can be injected for all projects when `injectAll` is enabled,
+   * and are also used as a shared value store for `{ secret: "GLOBAL_KEY" }` references.
    */
   getEffectiveSecrets(projectPath: string): Secret[] {
     const normalizedProjectPath = Config.normalizeSecretsProjectPath(projectPath) || projectPath;
     const config = this.loadSecretsConfig();
+    const globalSecrets = config[Config.GLOBAL_SECRETS_KEY] ?? [];
     const projectSecrets = config[normalizedProjectPath] ?? [];
-    const globalSecretsByKey = secretsToRecord(config[Config.GLOBAL_SECRETS_KEY] ?? []);
 
-    return projectSecrets.map((secret) => {
+    const globalSecretsByKey = secretsToRecord(globalSecrets);
+
+    const injectedGlobalSecrets: Secret[] = [];
+    for (const secret of globalSecrets) {
+      if (!secret.injectAll) {
+        continue;
+      }
+
+      const resolvedValue = globalSecretsByKey[secret.key];
+      // Allow empty-string global secrets by checking for undefined explicitly.
+      if (resolvedValue !== undefined) {
+        injectedGlobalSecrets.push({ key: secret.key, value: resolvedValue });
+      }
+    }
+
+    const resolvedProjectSecrets = projectSecrets.map((secret) => {
       if (!Config.isSecretReferenceValue(secret.value)) {
         return secret;
       }
@@ -1380,7 +1397,6 @@ ${jsonString}`;
         return secret;
       }
 
-      // Allow empty-string global secrets by checking for undefined explicitly.
       const resolvedGlobalValue = globalSecretsByKey[targetKey];
       if (resolvedGlobalValue !== undefined) {
         return {
@@ -1391,6 +1407,13 @@ ${jsonString}`;
 
       return secret;
     });
+
+    const projectKeys = new Set(resolvedProjectSecrets.map((secret) => secret.key));
+    const nonOverriddenGlobalSecrets = injectedGlobalSecrets.filter(
+      (secret) => !projectKeys.has(secret.key)
+    );
+
+    return [...nonOverriddenGlobalSecrets, ...resolvedProjectSecrets];
   }
 
   /**
