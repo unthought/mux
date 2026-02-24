@@ -1497,7 +1497,9 @@ export class SSHRuntime extends RemoteRuntime {
         // Use -b (not -B) so we fail instead of silently resetting an existing
         // branch that another worktree might reference. initWorkspace uses -B
         // because it owns the branch lifecycle; fork is creating a new name.
-        const worktreeCmd = `git -C ${baseRepoPathArg} worktree add ${newWorkspacePathArg} -b ${shescape.quote(newWorkspaceName)} ${shescape.quote(sourceBranch)}`;
+        // Disable git hooks for untrusted projects (prevents post-checkout execution)
+        const nhp = gitNoHooksPrefix(params.trusted);
+        const worktreeCmd = `${nhp}git -C ${baseRepoPathArg} worktree add ${newWorkspacePathArg} -b ${shescape.quote(newWorkspaceName)} ${shescape.quote(sourceBranch)}`;
         const worktreeResult = await execBuffered(this, worktreeCmd, {
           cwd: "/tmp",
           timeout: 60,
@@ -1602,10 +1604,12 @@ export class SSHRuntime extends RemoteRuntime {
         }
 
         // Checkout the destination branch, creating it from sourceBranch if needed.
+        // Disable git hooks for untrusted projects (prevents post-checkout execution)
+        const forkNhp = gitNoHooksPrefix(params.trusted);
         initLogger.logStep(`Checking out branch: ${newWorkspaceName}`);
         const checkoutCmd =
-          `git checkout ${shescape.quote(newWorkspaceName)} 2>/dev/null || ` +
-          `git checkout -b ${shescape.quote(newWorkspaceName)} ${shescape.quote(sourceBranch)}`;
+          `${forkNhp}git checkout ${shescape.quote(newWorkspaceName)} 2>/dev/null || ` +
+          `${forkNhp}git checkout -b ${shescape.quote(newWorkspaceName)} ${shescape.quote(sourceBranch)}`;
         const checkoutResult = await execBuffered(this, checkoutCmd, {
           cwd: newWorkspacePath,
           timeout: 120,

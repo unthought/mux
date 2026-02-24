@@ -90,8 +90,14 @@ export class LocalRuntime extends LocalBaseRuntime {
       params;
 
     try {
-      if (skipInitHook) {
-        initLogger.logStep("Skipping .mux/init hook (disabled for this task)");
+      // Skip init hook when explicitly disabled or when project is untrusted
+      // (init hook is repo-controlled code that must not run without user consent)
+      if (skipInitHook || !params.trusted) {
+        initLogger.logStep(
+          skipInitHook
+            ? "Skipping .mux/init hook (disabled for this task)"
+            : "Skipping .mux/init hook (project not trusted)"
+        );
         initLogger.logComplete(0);
         return { success: true };
       }
