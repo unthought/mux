@@ -969,8 +969,14 @@ export class SSHRuntime extends RemoteRuntime {
 
       // 3. Run .mux/init hook if it exists
       // Note: runInitHookOnRuntime calls logComplete() internally
-      if (skipInitHook) {
-        initLogger.logStep("Skipping .mux/init hook (disabled for this task)");
+      // Skip init hook when explicitly disabled or when project is untrusted
+      // (init hook is repo-controlled code that must not run without user consent)
+      if (skipInitHook || !params.trusted) {
+        initLogger.logStep(
+          skipInitHook
+            ? "Skipping .mux/init hook (disabled for this task)"
+            : "Skipping .mux/init hook (project not trusted)"
+        );
         initLogger.logComplete(0);
       } else {
         const hookExists = await checkInitHookExists(projectPath);

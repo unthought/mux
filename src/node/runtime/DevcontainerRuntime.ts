@@ -471,6 +471,14 @@ export class DevcontainerRuntime extends LocalBaseRuntime {
     const { projectPath, branchName, workspacePath, initLogger, env } = params;
 
     try {
+      // Skip init hook when project is untrusted
+      // (init hook is repo-controlled code that must not run without user consent)
+      if (!params.trusted) {
+        initLogger.logStep("Skipping .mux/init hook (project not trusted)");
+        initLogger.logComplete(0);
+        return { success: true };
+      }
+
       // Check if init hook exists (on host - worktree is bind-mounted)
       const hookExists = await checkInitHookExists(workspacePath);
       if (hookExists) {
