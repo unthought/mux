@@ -2017,10 +2017,14 @@ export const router = (authToken?: string) => {
         .output(schemas.projects.setTrust.output)
         .handler(async ({ context, input }) => {
           await context.config.editConfig((config) => {
-            const project = config.projects.get(input.projectPath);
-            if (project) {
-              project.trusted = input.trusted;
+            let project = config.projects.get(input.projectPath);
+            if (!project) {
+              // Create a minimal project entry so trust can be set before
+              // the first workspace.create (which normally adds the project)
+              project = { workspaces: [] };
+              config.projects.set(input.projectPath, project);
             }
+            project.trusted = input.trusted;
             return config;
           });
         }),
