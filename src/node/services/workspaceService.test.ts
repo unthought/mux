@@ -2501,6 +2501,7 @@ describe("WorkspaceService init cancellation", () => {
       getEffectiveSecrets: mock(() => []),
       getSessionDir: mock(() => "/tmp/test/sessions"),
       findWorkspace: mock(() => null),
+      loadConfigOrDefault: mock(() => ({ projects: new Map() })),
     };
 
     const mockAIService = {
@@ -3011,6 +3012,7 @@ describe("WorkspaceService fork", () => {
       generateStableId: mock(() => newWorkspaceId),
       findWorkspace: mock(() => null),
       getSessionDir: mock(() => "/tmp/test/sessions"),
+      loadConfigOrDefault: mock(() => ({ projects: new Map() })),
     };
 
     const workspaceService = new WorkspaceService(

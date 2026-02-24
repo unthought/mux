@@ -32,6 +32,14 @@ void mock.module("./ConfiguredProvidersBar", () => ({
   ConfiguredProvidersBar: () => <div data-testid="ConfiguredProvidersBarMock" />,
 }));
 
+// Mock ProjectContext to provide trust data without requiring a full provider
+void mock.module("@/browser/contexts/ProjectContext", () => ({
+  useProjectContext: () => ({
+    projects: new Map(),
+    refreshProjects: () => Promise.resolve(),
+  }),
+}));
+
 // Mock ChatInput to simulate the old (buggy) behavior where onReady can fire again
 // on unrelated re-renders (e.g. workspace list updates).
 void mock.module("./ChatInput/index", () => ({
