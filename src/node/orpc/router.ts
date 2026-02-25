@@ -2552,7 +2552,7 @@ export const router = (authToken?: string) => {
         .output(schemas.workspace.create.output)
         .handler(async ({ context, input }) => {
           const result = await context.workspaceService.create(
-            input.projectPath,
+            stripTrailingSlashes(input.projectPath),
             input.branchName,
             input.trunkBranch,
             input.title,
