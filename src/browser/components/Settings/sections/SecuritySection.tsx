@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { ShieldCheck, ShieldOff } from "lucide-react";
 import { Button } from "@/browser/components/ui/button";
 import { useProjectContext } from "@/browser/contexts/ProjectContext";
@@ -11,11 +12,19 @@ import { useAPI } from "@/browser/contexts/API";
 export function SecuritySection() {
   const { api } = useAPI();
   const { projects, refreshProjects } = useProjectContext();
+  const [pendingPath, setPendingPath] = useState<string | null>(null);
 
   const handleToggleTrust = async (projectPath: string, currentlyTrusted: boolean) => {
     if (!api) return;
-    await api.projects.setTrust({ projectPath, trusted: !currentlyTrusted });
-    await refreshProjects();
+    try {
+      setPendingPath(projectPath);
+      await api.projects.setTrust({ projectPath, trusted: !currentlyTrusted });
+      await refreshProjects();
+    } catch {
+      // Best-effort — config refresh will reflect actual state
+    } finally {
+      setPendingPath(null);
+    }
   };
 
   const projectEntries = Array.from(projects.entries());
@@ -53,11 +62,13 @@ export function SecuritySection() {
                 <Button
                   size="sm"
                   variant={trusted ? "outline" : "default"}
+                  disabled={pendingPath === path}
+                  aria-label={`${trusted ? "Revoke trust for" : "Trust"} ${name}`}
                   onClick={() => {
                     void handleToggleTrust(path, trusted);
                   }}
                 >
-                  {trusted ? "Revoke trust" : "Trust"}
+                  {pendingPath === path ? "Saving…" : trusted ? "Revoke trust" : "Trust"}
                 </Button>
               </div>
             );

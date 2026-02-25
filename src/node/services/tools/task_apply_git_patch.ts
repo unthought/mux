@@ -676,7 +676,7 @@ export const createTaskApplyGitPatchTool: ToolFactory = (config: ToolConfigurati
         } finally {
           // Best-effort: clean up the temp worktree. This should never fail the tool call.
           try {
-            const abortResult = await execBuffered(config.runtime, "git am --abort", {
+            const abortResult = await execBuffered(config.runtime, `${nhp}git am --abort`, {
               cwd: dryRunWorktreePath,
               timeout: 30,
             });
@@ -704,7 +704,7 @@ export const createTaskApplyGitPatchTool: ToolFactory = (config: ToolConfigurati
           try {
             const removeResult = await execBuffered(
               config.runtime,
-              `git worktree remove --force ${shellQuote(dryRunWorktreePath)}`,
+              `${nhp}git worktree remove --force ${shellQuote(dryRunWorktreePath)}`,
               { cwd: config.cwd, timeout: 60 }
             );
             if (removeResult.exitCode !== 0) {

@@ -17,20 +17,34 @@ interface ProjectTrustBannerProps {
 export function ProjectTrustBanner(props: ProjectTrustBannerProps) {
   const { api } = useAPI();
   const [showConfirm, setShowConfirm] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const handleConfirm = async () => {
     if (!api) return;
-    await api.projects.setTrust({ projectPath: props.projectPath, trusted: true });
-    setShowConfirm(false);
-    props.onTrusted();
+    try {
+      setError(null);
+      await api.projects.setTrust({ projectPath: props.projectPath, trusted: true });
+      setShowConfirm(false);
+      props.onTrusted();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to update trust setting");
+    }
   };
 
   return (
     <>
       <div className="border-warning/30 bg-warning/10 text-warning flex items-center gap-2 rounded-md border px-3 py-2 text-sm">
         <ShieldAlert className="size-4 shrink-0" />
-        <span className="flex-1">This project is not trusted. Hooks and scripts are disabled.</span>
-        <Button size="sm" variant="outline" onClick={() => setShowConfirm(true)}>
+        <span className="flex-1">
+          This project is not trusted. Hooks and scripts are disabled.
+          {error && <span className="text-destructive ml-2">{error}</span>}
+        </span>
+        <Button
+          size="sm"
+          variant="outline"
+          className="shrink-0"
+          onClick={() => setShowConfirm(true)}
+        >
           Trust this project
         </Button>
       </div>
