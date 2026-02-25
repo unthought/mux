@@ -95,6 +95,7 @@ export class ProviderService {
     for (const provider of this.list()) {
       const config = (providersConfig[provider] ?? {}) as {
         apiKey?: string;
+        apiKeyFile?: string;
         baseUrl?: string;
         models?: unknown[];
         serviceTier?: unknown;
@@ -139,6 +140,7 @@ export class ProviderService {
         isEnabled,
         isConfigured: false, // computed below
         baseUrl: forcedBaseUrl ?? config.baseUrl,
+        apiKeyFile: typeof config.apiKeyFile === "string" ? config.apiKeyFile : undefined,
         models: filteredModels,
       };
 

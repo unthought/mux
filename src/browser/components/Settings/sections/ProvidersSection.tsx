@@ -128,6 +128,13 @@ function getProviderFields(provider: ProviderName): FieldConfig[] {
   return [
     { key: "apiKey", label: "API Key", placeholder: "Enter API key", type: "secret" },
     {
+      key: "apiKeyFile",
+      label: "API Key File",
+      placeholder: "~/.config/coder/session_token",
+      type: "text",
+      optional: true,
+    },
+    {
       key: "baseUrl",
       label: "Base URL",
       placeholder: "https://api.example.com",
@@ -955,6 +962,8 @@ export function ProvidersSection() {
       updateOptimistically(provider, { apiKeySet: editValue !== "" });
     } else if (field === "baseUrl") {
       updateOptimistically(provider, { baseUrl: editValue || undefined });
+    } else if (field === "apiKeyFile") {
+      updateOptimistically(provider, { apiKeyFile: editValue || undefined });
     }
 
     setEditingField(null);
@@ -974,6 +983,8 @@ export function ProvidersSection() {
         updateOptimistically(provider, { apiKeySet: false });
       } else if (field === "baseUrl") {
         updateOptimistically(provider, { baseUrl: undefined });
+      } else if (field === "apiKeyFile") {
+        updateOptimistically(provider, { apiKeyFile: undefined });
       }
 
       // Save in background
