@@ -1165,7 +1165,13 @@ describe("StreamManager - previousResponseId recovery", () => {
         model,
         messages: [{ role: "user", content: "original" }],
         system: "system",
-        providerOptions: { openai: { previousResponseId: "resp_abc123" } },
+        providerOptions: {
+          openai: {
+            previousResponseId: "resp_abc123",
+            // Keep prompt cache routing stable when we recover from a lost response ID.
+            promptCacheKey: "mux-v1-ws-step",
+          },
+        },
       },
       parts: [
         {
@@ -1219,6 +1225,7 @@ describe("StreamManager - previousResponseId recovery", () => {
       openai?: Record<string, unknown>;
     };
     expect(openaiOptions.openai?.previousResponseId).toBeUndefined();
+    expect(openaiOptions.openai?.promptCacheKey).toBe("mux-v1-ws-step");
   });
 
   test("resolveTotalUsageForStreamEnd prefers cumulative usage after step retry", () => {
@@ -1731,6 +1738,101 @@ describe("StreamManager - ask_user_question Partial Persistence", () => {
     // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
     const flushMethod = Reflect.get(streamManager, "flushPartialWrite");
     expect(typeof flushMethod).toBe("function");
+  });
+});
+
+describe("StreamManager - abort cleanup deduplication", () => {
+  test("soft interrupt only schedules abort cleanup once", async () => {
+    const streamManager = new StreamManager(historyService);
+
+    let flushCalls = 0;
+    const replaceFlush = Reflect.set(streamManager, "flushPartialWrite", () => {
+      flushCalls += 1;
+      return Promise.resolve();
+    });
+    expect(replaceFlush).toBe(true);
+
+    let cleanupCalls = 0;
+    const replaceCleanup = Reflect.set(streamManager, "cleanupAbortedStream", () => {
+      cleanupCalls += 1;
+      return Promise.resolve();
+    });
+    expect(replaceCleanup).toBe(true);
+
+    const checkSoftCancelStream = Reflect.get(streamManager, "checkSoftCancelStream") as
+      | ((workspaceId: string, streamInfo: unknown) => void)
+      | undefined;
+    expect(typeof checkSoftCancelStream).toBe("function");
+
+    const streamInfo = {
+      state: "streaming",
+      abortController: new AbortController(),
+      softInterrupt: {
+        pending: true,
+        abandonPartial: false,
+        abortReason: "user",
+      },
+      abortCleanupPromise: undefined,
+    };
+
+    checkSoftCancelStream?.call(streamManager, "workspace-soft-interrupt", streamInfo);
+    checkSoftCancelStream?.call(streamManager, "workspace-soft-interrupt", streamInfo);
+
+    // Allow detached cleanup promise to run.
+    await Promise.resolve();
+
+    expect(flushCalls).toBe(1);
+    expect(cleanupCalls).toBe(1);
+    expect(streamInfo.softInterrupt.pending).toBe(false);
+    expect(streamInfo.abortController.signal.aborted).toBe(true);
+  });
+
+  test("signals abort immediately even when partial flush is blocked", async () => {
+    const streamManager = new StreamManager(historyService);
+
+    let resolveFlush: (() => void) | undefined;
+    const flushGate = new Promise<void>((resolve) => {
+      resolveFlush = resolve;
+    });
+
+    const replaceFlush = Reflect.set(streamManager, "flushPartialWrite", () => flushGate);
+    expect(replaceFlush).toBe(true);
+
+    let cleanupCalls = 0;
+    const replaceCleanup = Reflect.set(streamManager, "cleanupAbortedStream", () => {
+      cleanupCalls += 1;
+      return Promise.resolve();
+    });
+    expect(replaceCleanup).toBe(true);
+
+    const checkSoftCancelStream = Reflect.get(streamManager, "checkSoftCancelStream") as
+      | ((workspaceId: string, streamInfo: unknown) => void)
+      | undefined;
+    expect(typeof checkSoftCancelStream).toBe("function");
+
+    const streamInfo = {
+      state: "streaming",
+      abortController: new AbortController(),
+      softInterrupt: {
+        pending: true,
+        abandonPartial: false,
+        abortReason: "user",
+      },
+      abortCleanupPromise: undefined,
+    };
+
+    checkSoftCancelStream?.call(streamManager, "workspace-soft-interrupt-window", streamInfo);
+
+    // Abort should be signaled before waiting on flushPartialWrite.
+    expect(streamInfo.softInterrupt.pending).toBe(false);
+    expect(streamInfo.abortController.signal.aborted).toBe(true);
+    expect(cleanupCalls).toBe(0);
+
+    resolveFlush?.();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(cleanupCalls).toBe(1);
   });
 });
 

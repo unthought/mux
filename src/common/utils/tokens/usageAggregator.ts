@@ -13,6 +13,15 @@ export interface ChatUsageComponent {
 }
 
 /**
+ * High-level source categories for accumulated session usage.
+ *
+ * Used for attribution/debugging in session-usage.json and Costs tab.
+ */
+export const SESSION_USAGE_SOURCES = ["main", "system1", "plan", "subagent"] as const;
+export type SessionUsageSource = (typeof SESSION_USAGE_SOURCES)[number];
+export const DEFAULT_SESSION_USAGE_SOURCE: SessionUsageSource = "main";
+
+/**
  * Enhanced usage type for display that includes provider-specific cache stats
  */
 export interface ChatUsageDisplay {

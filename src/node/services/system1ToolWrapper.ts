@@ -406,7 +406,8 @@ async function maybeFilterBashOutput(
             void opts.sessionUsageService.recordUsage(
               opts.workspaceId,
               normalizedModel,
-              displayUsage
+              displayUsage,
+              "system1"
             );
           }
         }

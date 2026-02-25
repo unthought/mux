@@ -118,6 +118,42 @@ describe("SessionUsageService", () => {
       expect(result!.byModel[model].output.tokens).toBe(5);
       expect(result!.rolledUpFrom?.[childWorkspaceId]).toBe(true);
     });
+
+    it("should merge child source attribution into parent", async () => {
+      const projectPath = "/tmp/mux-session-usage-test-project";
+      const model = "claude-sonnet-4-20250514";
+      const parentWorkspaceId = "parent-workspace";
+      const childWorkspaceId = "child-workspace";
+
+      await config.addWorkspace(projectPath, {
+        id: parentWorkspaceId,
+        name: "parent-branch",
+        projectName: "test-project",
+        projectPath,
+        runtimeConfig: { type: "local" },
+      });
+
+      await service.recordUsage(parentWorkspaceId, model, createUsage(100, 50), "main");
+
+      const rollup = await service.rollUpUsageIntoParent(
+        parentWorkspaceId,
+        childWorkspaceId,
+        { [model]: createUsage(10, 5) },
+        {
+          subagent: createUsage(8, 4),
+          system1: createUsage(2, 1),
+        }
+      );
+
+      expect(rollup.didRollUp).toBe(true);
+
+      const result = await service.getSessionUsage(parentWorkspaceId);
+      expect(result).toBeDefined();
+      expect(result!.bySource).toBeDefined();
+      expect(result!.bySource?.main?.input.tokens).toBe(100);
+      expect(result!.bySource?.subagent?.input.tokens).toBe(8);
+      expect(result!.bySource?.system1?.input.tokens).toBe(2);
+    });
   });
   describe("recordUsage", () => {
     it("should accumulate usage for same model (not overwrite)", async () => {
@@ -135,6 +171,22 @@ describe("SessionUsageService", () => {
       expect(result!.byModel[model].output.tokens).toBe(125); // 50 + 75
     });
 
+    it("should accumulate usage by source for attribution", async () => {
+      const workspaceId = "test-workspace";
+      const model = "claude-sonnet-4-20250514";
+
+      await service.recordUsage(workspaceId, model, createUsage(100, 50), "main");
+      await service.recordUsage(workspaceId, model, createUsage(20, 5), "system1");
+      await service.recordUsage(workspaceId, model, createUsage(30, 10), "main");
+
+      const result = await service.getSessionUsage(workspaceId);
+      expect(result).toBeDefined();
+      expect(result!.bySource).toBeDefined();
+      expect(result!.bySource?.main?.input.tokens).toBe(130);
+      expect(result!.bySource?.main?.output.tokens).toBe(60);
+      expect(result!.bySource?.system1?.input.tokens).toBe(20);
+      expect(result!.bySource?.system1?.output.tokens).toBe(5);
+    });
     it("should track separate usage per model", async () => {
       const workspaceId = "test-workspace";
       const sonnet = createUsage(100, 50);

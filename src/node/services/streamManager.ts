@@ -51,6 +51,10 @@ import {
 } from "@/common/utils/ai/cacheStrategy";
 import type { SessionUsageService } from "./sessionUsageService";
 import { createDisplayUsage } from "@/common/utils/tokens/displayUsage";
+import {
+  DEFAULT_SESSION_USAGE_SOURCE,
+  type SessionUsageSource,
+} from "@/common/utils/tokens/usageAggregator";
 import { extractToolMediaAsUserMessagesFromModelMessages } from "@/node/utils/messages/extractToolMediaAsUserMessagesFromModelMessages";
 import { normalizeGatewayModel } from "@/common/utils/ai/models";
 import { MUX_GATEWAY_SESSION_EXPIRED_MESSAGE } from "@/common/constants/muxGatewayOAuth";
@@ -278,6 +282,8 @@ interface WorkspaceStreamInfo {
   unlinkAbortSignal?: () => void;
   abortController: AbortController;
   workspaceName?: string;
+  /** Usage source category persisted in session-usage.json for attribution. */
+  usageSource: SessionUsageSource;
   messageId: string;
   token: StreamToken;
   startTime: number;
@@ -321,6 +327,9 @@ interface WorkspaceStreamInfo {
   softInterrupt:
     | { pending: false }
     | { pending: true; abandonPartial: boolean; abortReason: StreamAbortReason };
+  // Tracks in-flight abort cleanup so multiple interrupt paths don't duplicate
+  // session usage recording or stream-abort events.
+  abortCleanupPromise?: Promise<void>;
   // Temporary directory for tool outputs (auto-cleaned when stream ends)
   runtimeTempDir: string;
   // Runtime for temp directory cleanup
@@ -865,6 +874,31 @@ export class StreamManager extends EventEmitter {
     }
   }
 
+  private beginAbortCleanup(
+    workspaceId: WorkspaceId,
+    streamInfo: WorkspaceStreamInfo,
+    abortReason: StreamAbortReason,
+    abandonPartial?: boolean
+  ): Promise<void> {
+    // Deduplicate abort cleanup across concurrent/overlapping interrupt paths.
+    // Without this guard, soft interrupts can schedule multiple cleanup tasks,
+    // causing duplicate session usage recording and duplicate stream-abort events.
+    streamInfo.abortCleanupPromise ??= (async () => {
+      // Signal abort immediately so the stream loop stops before we do any
+      // remaining cleanup work (including waiting on partial-write flushing).
+      streamInfo.abortController.abort();
+      streamInfo.softInterrupt = { pending: false };
+
+      // Flush any pending partial write after signaling abort to preserve
+      // already-produced content without allowing additional stream work.
+      await this.flushPartialWrite(workspaceId, streamInfo);
+
+      await this.cleanupAbortedStream(workspaceId, streamInfo, abortReason, abandonPartial);
+    })();
+
+    return streamInfo.abortCleanupPromise;
+  }
+
   private async cancelStreamSafely(
     workspaceId: WorkspaceId,
     streamInfo: WorkspaceStreamInfo,
@@ -887,13 +921,8 @@ export class StreamManager extends EventEmitter {
 
     try {
       streamInfo.state = StreamState.STOPPING;
-      // Flush any pending partial write immediately (preserves work on interruption)
-      await this.flushPartialWrite(workspaceId, streamInfo);
-
-      streamInfo.abortController.abort();
-
       // Unlike checkSoftCancelStream, await cleanup (blocking)
-      await this.cleanupAbortedStream(workspaceId, streamInfo, abortReason, abandonPartial);
+      await this.beginAbortCleanup(workspaceId, streamInfo, abortReason, abandonPartial);
     } catch (error) {
       log.error("Error during stream cancellation:", error);
       // Force cleanup even if cancellation fails
@@ -903,23 +932,25 @@ export class StreamManager extends EventEmitter {
 
   // Checks if a soft interrupt is necessary, and performs one if so
   // Similar to cancelStreamSafely but performs cleanup without blocking
-  private async checkSoftCancelStream(
-    workspaceId: WorkspaceId,
-    streamInfo: WorkspaceStreamInfo
-  ): Promise<void> {
-    if (!streamInfo.softInterrupt.pending) return;
+  private checkSoftCancelStream(workspaceId: WorkspaceId, streamInfo: WorkspaceStreamInfo): void {
+    if (!streamInfo.softInterrupt.pending || streamInfo.abortCleanupPromise) return;
     try {
       streamInfo.state = StreamState.STOPPING;
 
-      // Flush any pending partial write immediately (preserves work on interruption)
-      await this.flushPartialWrite(workspaceId, streamInfo);
-
-      streamInfo.abortController.abort();
+      // Capture the pending interrupt metadata. Keep pending=true until
+      // beginAbortCleanup actually signals abort so other guards still observe
+      // interruption while flushPartialWrite is in-flight.
+      const { abandonPartial, abortReason } = streamInfo.softInterrupt;
 
       // Return back to the stream loop so we can wait for it to finish before
       // sending the stream abort event.
-      const { abandonPartial, abortReason } = streamInfo.softInterrupt;
-      void this.cleanupAbortedStream(workspaceId, streamInfo, abortReason, abandonPartial);
+      void this.beginAbortCleanup(workspaceId, streamInfo, abortReason, abandonPartial).catch(
+        (error) => {
+          log.error("Error during stream cancellation:", error);
+          // Force cleanup even if cancellation fails
+          this.workspaceStreams.delete(workspaceId);
+        }
+      );
     } catch (error) {
       log.error("Error during stream cancellation:", error);
       // Force cleanup even if cancellation fails
@@ -989,7 +1020,7 @@ export class StreamManager extends EventEmitter {
     providerMetadata: Record<string, unknown> | undefined,
     logMessage: string,
     logLevel: "warn" | "error",
-    streamInfo?: Pick<WorkspaceStreamInfo, "workspaceName" | "metadataModel">
+    streamInfo?: Pick<WorkspaceStreamInfo, "workspaceName" | "metadataModel" | "usageSource">
   ): Promise<void> {
     if (!this.sessionUsageService || !usage) {
       return;
@@ -1008,7 +1039,8 @@ export class StreamManager extends EventEmitter {
       await this.sessionUsageService.recordUsage(
         workspaceId as string,
         normalizeGatewayModel(model),
-        messageUsage
+        messageUsage,
+        streamInfo?.usageSource ?? DEFAULT_SESSION_USAGE_SOURCE
       );
     } catch (error) {
       (logLevel === "error" ? workspaceLog.error : workspaceLog.warn)(logMessage, { error });
@@ -1252,7 +1284,8 @@ export class StreamManager extends EventEmitter {
     thinkingLevel?: string,
     headers?: Record<string, string | undefined>,
     anthropicCacheTtlOverride?: AnthropicCacheTtl,
-    stopAfterSuccessfulProposePlan?: boolean
+    stopAfterSuccessfulProposePlan?: boolean,
+    usageSource: SessionUsageSource = DEFAULT_SESSION_USAGE_SOURCE
   ): WorkspaceStreamInfo {
     // abortController is created and linked to the caller-provided abortSignal in startStream().
 
@@ -1290,6 +1323,7 @@ export class StreamManager extends EventEmitter {
       state: StreamState.STARTING,
       streamResult,
       workspaceName,
+      usageSource,
       abortController,
       messageId,
       token: streamToken,
@@ -1310,6 +1344,7 @@ export class StreamManager extends EventEmitter {
       partialWritePromise: undefined, // No write in flight initially
       processingPromise: Promise.resolve(), // Placeholder, overwritten in startStream
       softInterrupt: { pending: false },
+      abortCleanupPromise: undefined,
       runtimeTempDir, // Stream-scoped temp directory for tool outputs
       runtime, // Runtime for temp directory cleanup
       // Initialize cumulative tracking for multi-step streams
@@ -1395,7 +1430,7 @@ export class StreamManager extends EventEmitter {
     output: unknown
   ): Promise<void> {
     await this.completeToolCall(workspaceId, streamInfo, toolCalls, toolCallId, toolName, output);
-    await this.checkSoftCancelStream(workspaceId, streamInfo);
+    this.checkSoftCancelStream(workspaceId, streamInfo);
   }
 
   private logOrphanToolResult(
@@ -1728,7 +1763,7 @@ export class StreamManager extends EventEmitter {
                   workspaceId: workspaceId as string,
                   messageId: streamInfo.messageId,
                 });
-                await this.checkSoftCancelStream(workspaceId, streamInfo);
+                this.checkSoftCancelStream(workspaceId, streamInfo);
                 break;
               }
 
@@ -1937,12 +1972,12 @@ export class StreamManager extends EventEmitter {
                 };
                 streamInfo.currentStepStartIndex = streamInfo.parts.length;
                 this.emit("usage-delta", usageEvent);
-                await this.checkSoftCancelStream(workspaceId, streamInfo);
+                this.checkSoftCancelStream(workspaceId, streamInfo);
                 break;
               }
 
               case "text-end": {
-                await this.checkSoftCancelStream(workspaceId, streamInfo);
+                this.checkSoftCancelStream(workspaceId, streamInfo);
                 break;
               }
             }
@@ -2660,7 +2695,8 @@ export class StreamManager extends EventEmitter {
     thinkingLevel?: string,
     headers?: Record<string, string | undefined>,
     anthropicCacheTtlOverride?: AnthropicCacheTtl,
-    stopAfterSuccessfulProposePlan?: boolean
+    stopAfterSuccessfulProposePlan?: boolean,
+    usageSource: SessionUsageSource = DEFAULT_SESSION_USAGE_SOURCE
   ): Promise<Result<StreamToken, SendMessageError>> {
     const typedWorkspaceId = workspaceId as WorkspaceId;
 
@@ -2738,7 +2774,8 @@ export class StreamManager extends EventEmitter {
           thinkingLevel,
           headers,
           anthropicCacheTtlOverride,
-          stopAfterSuccessfulProposePlan
+          stopAfterSuccessfulProposePlan,
+          usageSource
         );
 
         // Guard against a narrow race:

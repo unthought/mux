@@ -15,7 +15,7 @@ interface LoadMoreResponse {
 
 // Mock client
 // eslint-disable-next-line require-yield
-const mockOnChat = mock(async function* (
+const defaultOnChatImplementation = async function* (
   _input?: { workspaceId: string; mode?: unknown },
   options?: { signal?: AbortSignal }
 ): AsyncGenerator<WorkspaceChatMessage, void, unknown> {
@@ -27,7 +27,9 @@ const mockOnChat = mock(async function* (
     }
     options.signal.addEventListener("abort", () => resolve(), { once: true });
   });
-});
+};
+
+const mockOnChat = mock(defaultOnChatImplementation);
 
 const mockGetSessionUsage = mock((_input: { workspaceId: string }) =>
   Promise.resolve<unknown>(undefined)
@@ -178,6 +180,16 @@ function createHistoryMessageEvent(id: string, historySequence: number): Workspa
   };
 }
 
+function createUsageDisplay(inputTokens: number, outputTokens: number) {
+  return {
+    input: { tokens: inputTokens },
+    cached: { tokens: 0 },
+    cacheCreate: { tokens: 0 },
+    output: { tokens: outputTokens },
+    reasoning: { tokens: 0 },
+  };
+}
+
 async function waitForAbortSignal(signal?: AbortSignal): Promise<void> {
   await new Promise<void>((resolve) => {
     if (!signal) {
@@ -194,6 +206,7 @@ describe("WorkspaceStore", () => {
 
   beforeEach(() => {
     mockOnChat.mockClear();
+    mockOnChat.mockImplementation(defaultOnChatImplementation);
     mockGetSessionUsage.mockClear();
     mockHistoryLoadMore.mockClear();
     mockActivityList.mockClear();
@@ -723,6 +736,96 @@ describe("WorkspaceStore", () => {
       const usage = store.getWorkspaceUsage("workspace-2");
       expect(usage.sessionTotal).toBeDefined();
       expect(usage.sessionTotal!.input.tokens).toBe(1000);
+    });
+
+    it("hydrates source totals from persisted session usage", async () => {
+      const workspaceId = "workspace-source-totals";
+      const sessionUsageData = {
+        byModel: {
+          "claude-sonnet-4": createUsageDisplay(1000, 100),
+        },
+        bySource: {
+          main: createUsageDisplay(900, 90),
+          system1: createUsageDisplay(100, 10),
+        },
+        version: 1 as const,
+      };
+
+      mockGetSessionUsage.mockImplementation(
+        ({ workspaceId: requestedWorkspaceId }: { workspaceId: string }) => {
+          if (requestedWorkspaceId === workspaceId) {
+            return Promise.resolve(sessionUsageData);
+          }
+          return Promise.resolve(undefined);
+        }
+      );
+
+      createAndAddWorkspace(store, workspaceId, {}, false);
+      store.setActiveWorkspaceId(workspaceId);
+      await new Promise((resolve) => setTimeout(resolve, 10));
+
+      const usage = store.getWorkspaceUsage(workspaceId);
+      expect(usage.sourceTotals?.main?.input.tokens).toBe(900);
+      expect(usage.sourceTotals?.system1?.output.tokens).toBe(10);
+    });
+
+    it("merges source totals when session-usage-delta events arrive", async () => {
+      const workspaceId = "workspace-source-delta";
+      mockGetSessionUsage.mockImplementation(
+        ({ workspaceId: requestedWorkspaceId }: { workspaceId: string }) => {
+          if (requestedWorkspaceId === workspaceId) {
+            return Promise.resolve({
+              byModel: {
+                "claude-sonnet-4": createUsageDisplay(100, 50),
+              },
+              bySource: {
+                main: createUsageDisplay(100, 50),
+              },
+              version: 1 as const,
+            });
+          }
+          return Promise.resolve(undefined);
+        }
+      );
+
+      mockOnChat.mockImplementation(async function* (
+        _input?: { workspaceId: string; mode?: unknown },
+        options?: { signal?: AbortSignal }
+      ): AsyncGenerator<WorkspaceChatMessage, void, unknown> {
+        yield { type: "caught-up" };
+        yield {
+          type: "session-usage-delta",
+          workspaceId,
+          sourceWorkspaceId: "child-subagent",
+          byModelDelta: {
+            "claude-sonnet-4": createUsageDisplay(20, 10),
+          },
+          bySourceDelta: {
+            main: createUsageDisplay(5, 2),
+            subagent: createUsageDisplay(15, 8),
+          },
+          timestamp: Date.now(),
+        };
+
+        await waitForAbortSignal(options?.signal);
+      });
+
+      createAndAddWorkspace(store, workspaceId);
+
+      const deadline = Date.now() + 1_000;
+      while (Date.now() < deadline) {
+        const usage = store.getWorkspaceUsage(workspaceId);
+        if (usage.sourceTotals?.subagent?.input.tokens === 15) {
+          break;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+
+      const usage = store.getWorkspaceUsage(workspaceId);
+      expect(usage.sourceTotals?.main?.input.tokens).toBe(105);
+      expect(usage.sourceTotals?.main?.output.tokens).toBe(52);
+      expect(usage.sourceTotals?.subagent?.input.tokens).toBe(15);
+      expect(usage.sourceTotals?.subagent?.output.tokens).toBe(8);
     });
 
     it("ignores stale session-usage fetch when a newer refresh supersedes it", async () => {

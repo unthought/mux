@@ -1982,7 +1982,8 @@ export class WorkspaceService extends EventEmitter {
               const rollup = await this.sessionUsageService.rollUpUsageIntoParent(
                 parentWorkspaceId,
                 workspaceId,
-                childUsage.byModel
+                childUsage.byModel,
+                childUsage.bySource
               );
 
               if (rollup.didRollUp) {
@@ -1992,6 +1993,7 @@ export class WorkspaceService extends EventEmitter {
                   workspaceId: parentWorkspaceId,
                   sourceWorkspaceId: workspaceId,
                   byModelDelta: childUsage.byModel,
+                  bySourceDelta: childUsage.bySource,
                   timestamp: Date.now(),
                 });
               }

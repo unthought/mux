@@ -17,6 +17,16 @@ describe("SessionUsageFileSchema conformance", () => {
           model: "gpt-4",
         },
       },
+      bySource: {
+        main: {
+          input: { tokens: 1, cost_usd: 0.01 },
+          cached: { tokens: 0, cost_usd: 0 },
+          cacheCreate: { tokens: 0, cost_usd: 0 },
+          output: { tokens: 2, cost_usd: 0.02 },
+          reasoning: { tokens: 0, cost_usd: 0 },
+          model: "gpt-4",
+        },
+      },
       lastRequest: {
         model: "gpt-4",
         usage: {
@@ -59,6 +69,7 @@ describe("SessionUsageFileSchema conformance", () => {
     const parsed = SessionUsageFileSchema.parse(legacy);
     expect(parsed.byModel).toEqual({});
     expect(parsed.version).toBe(1);
+    expect(parsed.bySource).toBeUndefined();
     expect(parsed.rolledUpFrom).toBeUndefined();
     expect(parsed.tokenStatsCache).toBeUndefined();
   });

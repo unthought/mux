@@ -44,8 +44,11 @@ import { resolveModelForMetadata } from "@/common/utils/providers/modelEntries";
 import { computeProvidersConfigFingerprint } from "@/common/utils/providers/configFingerprint";
 import { isDurableCompactionBoundaryMarker } from "@/common/utils/messages/compactionBoundary";
 import { WorkspaceConsumerManager } from "./WorkspaceConsumerManager";
-import type { ChatUsageDisplay } from "@/common/utils/tokens/usageAggregator";
-import { sumUsageHistory } from "@/common/utils/tokens/usageAggregator";
+import {
+  sumUsageHistory,
+  type ChatUsageDisplay,
+  type SessionUsageSource,
+} from "@/common/utils/tokens/usageAggregator";
 import type { TokenConsumer } from "@/common/types/chatStats";
 import { normalizeGatewayModel } from "@/common/utils/ai/models";
 import type { z } from "zod";
@@ -138,6 +141,8 @@ type DerivedState = Record<string, number>;
 export interface WorkspaceUsageState {
   /** Pre-computed session total (sum of all models) */
   sessionTotal?: ChatUsageDisplay;
+  /** Session totals grouped by usage source category (main/system1/plan/subagent). */
+  sourceTotals?: Partial<Record<SessionUsageSource, ChatUsageDisplay>>;
   /** Last completed request (persisted) */
   lastRequest?: {
     model: string;
@@ -324,6 +329,8 @@ function getMaxHistorySequence(messages: MuxMessage[]): number | undefined {
   return max;
 }
 
+const USAGE_COMPONENT_KEYS = ["input", "cached", "cacheCreate", "output", "reasoning"] as const;
+
 /**
  * Detect gateway-billed (costs-included) usage entries.
  * `createDisplayUsage` sets `costsIncluded: true` when
@@ -367,9 +374,8 @@ function isCostsIncludedEntry(
     return false;
   }
 
-  const components = ["input", "cached", "cacheCreate", "output", "reasoning"] as const;
   let hasTokens = false;
-  for (const key of components) {
+  for (const key of USAGE_COMPONENT_KEYS) {
     const component = usage[key];
     if (component.tokens > 0) {
       hasTokens = true;
@@ -380,6 +386,52 @@ function isCostsIncludedEntry(
   }
 
   return hasTokens;
+}
+
+function repriceSourceUsageWithSessionBlend(
+  sourceUsage: ChatUsageDisplay,
+  repricedSessionTotal: ChatUsageDisplay
+): ChatUsageDisplay {
+  if (sourceUsage.costsIncluded === true) {
+    return sourceUsage;
+  }
+
+  const repricedSource: ChatUsageDisplay = {
+    ...sourceUsage,
+    input: { ...sourceUsage.input },
+    cached: { ...sourceUsage.cached },
+    cacheCreate: { ...sourceUsage.cacheCreate },
+    output: { ...sourceUsage.output },
+    reasoning: { ...sourceUsage.reasoning },
+  };
+
+  let hasUnknownCosts = false;
+  for (const key of USAGE_COMPONENT_KEYS) {
+    const sessionComponent = repricedSessionTotal[key];
+    const sourceComponent = repricedSource[key];
+
+    if (sessionComponent.cost_usd === undefined) {
+      sourceComponent.cost_usd = undefined;
+      hasUnknownCosts = true;
+      continue;
+    }
+
+    if (sessionComponent.tokens <= 0) {
+      sourceComponent.cost_usd = 0;
+      continue;
+    }
+
+    const blendedRate = sessionComponent.cost_usd / sessionComponent.tokens;
+    sourceComponent.cost_usd = sourceComponent.tokens * blendedRate;
+  }
+
+  if (hasUnknownCosts) {
+    repricedSource.hasUnknownCosts = true;
+  } else {
+    delete repricedSource.hasUnknownCosts;
+  }
+
+  return repricedSource;
 }
 
 /**
@@ -409,6 +461,26 @@ function repriceSessionUsage(
   ) {
     const resolved = resolveModelForMetadata(usage.lastRequest.model, config);
     usage.lastRequest.usage = recomputeUsageCosts(usage.lastRequest.usage, resolved);
+  }
+
+  if (!usage.bySource) {
+    return;
+  }
+
+  // Source buckets aggregate multiple models, so we reprice them using the
+  // repriced session-level blended component rates to keep source breakdown
+  // costs aligned with the canonical byModel totals.
+  const repricedSessionTotal = sumUsageHistory(Object.values(usage.byModel));
+  if (!repricedSessionTotal) {
+    return;
+  }
+
+  for (const source of Object.keys(usage.bySource) as SessionUsageSource[]) {
+    const sourceUsage = usage.bySource[source];
+    if (!sourceUsage) {
+      continue;
+    }
+    usage.bySource[source] = repriceSourceUsageWithSessionBlend(sourceUsage, repricedSessionTotal);
   }
 }
 
@@ -744,6 +816,17 @@ export class WorkspaceStore {
       for (const [model, usage] of Object.entries(usageDelta.byModelDelta)) {
         const existing = current.byModel[model];
         current.byModel[model] = existing ? sumUsageHistory([existing, usage])! : usage;
+      }
+
+      if (usageDelta.bySourceDelta) {
+        const mergedBySource = { ...(current.bySource ?? {}) };
+        for (const [source, usage] of Object.entries(usageDelta.bySourceDelta)) {
+          const existing = mergedBySource[source as SessionUsageSource];
+          mergedBySource[source as SessionUsageSource] = existing
+            ? sumUsageHistory([existing, usage])!
+            : usage;
+        }
+        current.bySource = mergedBySource;
       }
 
       this.sessionUsage.set(workspaceId, current);
@@ -1993,6 +2076,7 @@ export class WorkspaceStore {
 
       // Last request from persisted data
       const lastRequest = sessionData?.lastRequest;
+      const sourceTotals = sessionData?.bySource;
 
       // Calculate total tokens from session total
       const totalTokens = sessionTotal
@@ -2082,7 +2166,15 @@ export class WorkspaceStore {
             )
           : undefined;
 
-      return { sessionTotal, lastRequest, lastContextUsage, totalTokens, liveUsage, liveCostUsage };
+      return {
+        sessionTotal,
+        sourceTotals,
+        lastRequest,
+        lastContextUsage,
+        totalTokens,
+        liveUsage,
+        liveCostUsage,
+      };
     });
   }
 

@@ -2,9 +2,11 @@ import React from "react";
 import { useWorkspaceUsage, useWorkspaceConsumers } from "@/browser/stores/WorkspaceStore";
 import { getModelStatsResolved } from "@/common/utils/tokens/modelStats";
 import {
+  getTotalCost,
   sumUsageHistory,
   formatCostWithDollar,
   type ChatUsageDisplay,
+  type SessionUsageSource,
 } from "@/common/utils/tokens/usageAggregator";
 import { usePersistedState } from "@/browser/hooks/usePersistedState";
 import { PREFERRED_COMPACTION_MODEL_KEY } from "@/common/constants/storage";
@@ -51,6 +53,23 @@ const VIEW_MODE_OPTIONS: Array<ToggleOption<ViewMode>> = [
   { value: "session", label: "Session" },
   { value: "last-request", label: "Last Request" },
 ];
+
+const SOURCE_LABELS: Record<SessionUsageSource, string> = {
+  main: "Main",
+  system1: "System 1",
+  plan: "Plan",
+  subagent: "Sub-agent",
+};
+
+function getUsageTotalTokens(usage: ChatUsageDisplay): number {
+  return (
+    usage.input.tokens +
+    usage.cached.tokens +
+    usage.cacheCreate.tokens +
+    usage.output.tokens +
+    usage.reasoning.tokens
+  );
+}
 
 interface CostsTabProps {
   workspaceId: string;
@@ -119,6 +138,22 @@ const CostsTabComponent: React.FC<CostsTabProps> = ({ workspaceId }) => {
 
   // Cost and Details table use viewMode
   const displayUsage = viewMode === "last-request" ? lastRequestUsage : sessionUsage;
+
+  const sourceRows =
+    viewMode === "session" && usage.sourceTotals
+      ? Object.entries(usage.sourceTotals)
+          .map(([source, sourceUsage]) => {
+            const typedSource = source as SessionUsageSource;
+            return {
+              source,
+              label: SOURCE_LABELS[typedSource] ?? source,
+              tokens: getUsageTotalTokens(sourceUsage),
+              cost: getTotalCost(sourceUsage),
+            };
+          })
+          .filter((row) => row.tokens > 0)
+          .sort((a, b) => b.tokens - a.tokens)
+      : [];
 
   return (
     <div className="text-light font-primary text-[13px] leading-relaxed">
@@ -423,6 +458,36 @@ const CostsTabComponent: React.FC<CostsTabProps> = ({ workspaceId }) => {
                       })}
                     </tbody>
                   </table>
+
+                  {sourceRows.length > 0 && (
+                    <div data-testid="cost-source-breakdown" className="mt-3">
+                      <h3 className="text-subtle m-0 mb-1 text-[11px] font-semibold tracking-wide uppercase">
+                        Source Breakdown
+                      </h3>
+                      <table className="w-full border-collapse text-[11px]">
+                        <thead>
+                          <tr className="border-border-light border-b">
+                            <th className="text-muted py-1 pr-2 text-left font-medium">Source</th>
+                            <th className="text-muted py-1 pr-2 text-right font-medium">Tokens</th>
+                            <th className="text-muted py-1 text-right font-medium">Cost</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {sourceRows.map((row) => (
+                            <tr key={row.source}>
+                              <td className="text-foreground py-1 pr-2">{row.label}</td>
+                              <td className="text-foreground py-1 pr-2 text-right">
+                                {formatTokens(row.tokens)}
+                              </td>
+                              <td className="text-foreground py-1 text-right">
+                                {formatCostWithDollar(row.cost)}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
                 </>
               );
             })()}

@@ -5,8 +5,12 @@ import assert from "@/common/utils/assert";
 import type { Config } from "@/node/config";
 import type { HistoryService } from "./historyService";
 import { workspaceFileLocks } from "@/node/utils/concurrency/workspaceFileLocks";
-import type { ChatUsageDisplay } from "@/common/utils/tokens/usageAggregator";
-import { sumUsageHistory } from "@/common/utils/tokens/usageAggregator";
+import {
+  DEFAULT_SESSION_USAGE_SOURCE,
+  sumUsageHistory,
+  type ChatUsageDisplay,
+  type SessionUsageSource,
+} from "@/common/utils/tokens/usageAggregator";
 import { createDisplayUsage } from "@/common/utils/tokens/displayUsage";
 import { normalizeGatewayModel } from "@/common/utils/ai/models";
 import type { TokenConsumer } from "@/common/types/chatStats";
@@ -47,6 +51,13 @@ export interface SessionUsageTokenStatsCacheV1 {
 
 export interface SessionUsageFile {
   byModel: Record<string, ChatUsageDisplay>;
+  /**
+   * Cumulative usage grouped by source category (main/system1/plan/subagent).
+   *
+   * This is additive metadata for attribution/debugging and does not replace
+   * byModel, which remains the canonical aggregation for cost totals.
+   */
+  bySource?: Partial<Record<SessionUsageSource, ChatUsageDisplay>>;
   lastRequest?: {
     model: string;
     usage: ChatUsageDisplay;
@@ -128,12 +139,22 @@ export class SessionUsageService {
    * AND updates lastRequest in a single atomic write.
    * Model should already be normalized via normalizeGatewayModel().
    */
-  async recordUsage(workspaceId: string, model: string, usage: ChatUsageDisplay): Promise<void> {
+  async recordUsage(
+    workspaceId: string,
+    model: string,
+    usage: ChatUsageDisplay,
+    source: SessionUsageSource = DEFAULT_SESSION_USAGE_SOURCE
+  ): Promise<void> {
     return this.fileLocks.withLock(workspaceId, async () => {
       const current = await this.readFile(workspaceId);
       const existing = current.byModel[model];
       // CRITICAL: Accumulate, don't overwrite
       current.byModel[model] = existing ? sumUsageHistory([existing, usage])! : usage;
+
+      const existingBySource = current.bySource?.[source];
+      const nextBySource = existingBySource ? sumUsageHistory([existingBySource, usage])! : usage;
+      current.bySource = { ...(current.bySource ?? {}), [source]: nextBySource };
+
       current.lastRequest = { model, usage, timestamp: Date.now() };
       await this.writeFile(workspaceId, current);
     });
@@ -203,7 +224,8 @@ export class SessionUsageService {
   async rollUpUsageIntoParent(
     parentWorkspaceId: string,
     childWorkspaceId: string,
-    childUsageByModel: Record<string, ChatUsageDisplay>
+    childUsageByModel: Record<string, ChatUsageDisplay>,
+    childUsageBySource?: Partial<Record<SessionUsageSource, ChatUsageDisplay>>
   ): Promise<{ didRollUp: boolean }> {
     assert(parentWorkspaceId.trim().length > 0, "rollUpUsageIntoParent: parentWorkspaceId empty");
     assert(childWorkspaceId.trim().length > 0, "rollUpUsageIntoParent: childWorkspaceId empty");
@@ -217,8 +239,9 @@ export class SessionUsageService {
       return { didRollUp: false };
     }
 
-    const entries = Object.entries(childUsageByModel);
-    if (entries.length === 0) {
+    const modelEntries = Object.entries(childUsageByModel);
+    const sourceEntries = Object.entries(childUsageBySource ?? {});
+    if (modelEntries.length === 0 && sourceEntries.length === 0) {
       return { didRollUp: false };
     }
 
@@ -244,9 +267,20 @@ export class SessionUsageService {
         return { didRollUp: false };
       }
 
-      for (const [model, usage] of entries) {
+      for (const [model, usage] of modelEntries) {
         const existing = current.byModel[model];
         current.byModel[model] = existing ? sumUsageHistory([existing, usage])! : usage;
+      }
+
+      if (sourceEntries.length > 0) {
+        const mergedBySource = { ...(current.bySource ?? {}) };
+        for (const [source, usage] of sourceEntries) {
+          const existing = mergedBySource[source as SessionUsageSource];
+          mergedBySource[source as SessionUsageSource] = existing
+            ? sumUsageHistory([existing, usage])!
+            : usage;
+        }
+        current.bySource = mergedBySource;
       }
 
       current.rolledUpFrom = { ...(current.rolledUpFrom ?? {}), [childWorkspaceId]: true };

@@ -13,6 +13,7 @@ import {
 } from "./message";
 import { MuxProviderOptionsSchema } from "./providerOptions";
 import { RuntimeModeSchema } from "./runtime";
+import { SESSION_USAGE_SOURCES } from "@/common/utils/tokens/usageAggregator";
 
 // Chat Events
 
@@ -409,6 +410,12 @@ export const SessionUsageDeltaEventSchema = z.object({
   workspaceId: z.string().meta({ description: "Parent workspace ID" }),
   sourceWorkspaceId: z.string().meta({ description: "Deleted child workspace ID" }),
   byModelDelta: z.record(z.string(), ChatUsageDisplaySchema),
+  bySourceDelta: z
+    .partialRecord(z.enum(SESSION_USAGE_SOURCES), ChatUsageDisplaySchema)
+    .optional()
+    .meta({
+      description: "Optional source-level usage rolled up from the deleted child workspace",
+    }),
   timestamp: z.number(),
 });
 export const UsageDeltaEventSchema = z.object({

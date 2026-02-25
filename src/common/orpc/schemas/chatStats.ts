@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { SESSION_USAGE_SOURCES } from "@/common/utils/tokens/usageAggregator";
 
 /** Top file path entry for file_read/file_edit consumers */
 export const TopFilePathSchema = z.object({
@@ -86,6 +87,10 @@ export const SessionUsageTokenStatsCacheSchema = z.object({
  */
 export const SessionUsageFileSchema = z.object({
   byModel: z.record(z.string(), ChatUsageDisplaySchema),
+  bySource: z
+    .partialRecord(z.enum(SESSION_USAGE_SOURCES), ChatUsageDisplaySchema)
+    .optional()
+    .meta({ description: "Aggregated usage by source category (main/system1/plan/subagent)" }),
   lastRequest: z
     .object({
       model: z.string(),

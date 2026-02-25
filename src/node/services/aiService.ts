@@ -41,7 +41,11 @@ import { delegatedToolCallManager } from "./delegatedToolCallManager";
 import { createErrorEvent } from "./utils/sendMessageError";
 import { createAssistantMessageId } from "./utils/messageIds";
 import type { SessionUsageService } from "./sessionUsageService";
-import { sumUsageHistory, getTotalCost } from "@/common/utils/tokens/usageAggregator";
+import {
+  sumUsageHistory,
+  getTotalCost,
+  type SessionUsageSource,
+} from "@/common/utils/tokens/usageAggregator";
 import { readToolInstructions } from "./systemMessage";
 import type { TelemetryService } from "@/node/services/telemetryService";
 
@@ -1081,6 +1085,9 @@ export class AIService extends EventEmitter {
             })
           : tools;
 
+      const sessionUsageSource: SessionUsageSource =
+        effectiveMode === "plan" ? "plan" : isSubagentWorkspace ? "subagent" : "main";
+
       const streamResult = await this.streamManager.startStream(
         workspaceId,
         finalMessages,
@@ -1110,7 +1117,8 @@ export class AIService extends EventEmitter {
         effectiveThinkingLevel,
         requestHeaders,
         effectiveMuxProviderOptions.anthropic?.cacheTtl ?? undefined,
-        stopAfterSuccessfulProposePlan
+        stopAfterSuccessfulProposePlan,
+        sessionUsageSource
       );
 
       if (!streamResult.success) {
