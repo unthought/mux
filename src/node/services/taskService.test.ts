@@ -2544,7 +2544,8 @@ describe("TaskService", () => {
       const count = taskService.backgroundForegroundWaitsForWorkspace(parentId);
       expect(count).toBe(1);
 
-      await expect(waitPromise).rejects.toThrow(ForegroundWaitBackgroundedError);
+      const err = await waitPromise.catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(ForegroundWaitBackgroundedError);
 
       const count2 = taskService.backgroundForegroundWaitsForWorkspace(parentId);
       expect(count2).toBe(0);
@@ -2596,7 +2597,8 @@ describe("TaskService", () => {
       };
       internal.resolveWaiters(childId, { reportMarkdown: "ok" });
 
-      await expect(waitPromise).resolves.toEqual({ reportMarkdown: "ok" });
+      const result = await waitPromise;
+      expect(result).toEqual({ reportMarkdown: "ok" });
     });
   });
 
