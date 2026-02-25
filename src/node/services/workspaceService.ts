@@ -1619,6 +1619,16 @@ export class WorkspaceService extends EventEmitter {
       return Err(validation.error ?? "Invalid workspace name");
     }
 
+    // Trust gate: block workspace creation for untrusted projects.
+    // The frontend shows a confirmation dialog before reaching here,
+    // but this guards secondary paths (slash commands, forking).
+    const projectConfig = this.config.loadConfigOrDefault().projects.get(projectPath);
+    if (!projectConfig?.trusted) {
+      return Err(
+        "This project must be trusted before creating workspaces. Trust the project in Settings → Security, or create a workspace from the project page."
+      );
+    }
+
     // Generate stable workspace ID
     const workspaceId = this.config.generateStableId();
 

@@ -11,6 +11,7 @@ import {
   type RuntimeMode,
 } from "@/common/types/runtime";
 
+import { log } from "@/node/services/log";
 import type { ThinkingLevel } from "@/common/types/thinking";
 
 /**
@@ -30,6 +31,9 @@ export function shouldSkipInitHook(
     return true;
   }
   if (!params.trusted) {
+    log.debug(
+      "Skipping .mux/init hook (project not trusted — should not reach here in normal flow)"
+    );
     initLogger.logStep("Skipping .mux/init hook (project not trusted)");
     return true;
   }
