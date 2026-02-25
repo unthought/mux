@@ -330,6 +330,15 @@ export function useCreationWorkspace({
     };
   }, [projectPath, api]);
 
+  // Cleanup: resolve trust prompt on unmount so handleSend doesn't wedge
+  useEffect(() => {
+    return () => {
+      if (trustPrompt) {
+        trustPrompt.resolve(false);
+      }
+    };
+  }, [trustPrompt]);
+
   const handleSend = useCallback(
     async (
       messageText: string,
