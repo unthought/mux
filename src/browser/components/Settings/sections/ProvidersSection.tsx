@@ -227,7 +227,7 @@ export function ProvidersSection() {
   const [codexOauthAuthorizeUrl, setCodexOauthAuthorizeUrl] = useState<string | null>(null);
 
   const codexOauthIsConnected = config?.openai?.codexOauthSet === true;
-  const openaiApiKeySet = config?.openai?.apiKeySet === true;
+  const openaiApiKeySet = config?.openai?.apiKeySet === true || !!config?.openai?.apiKeySource;
   const codexOauthDefaultAuth =
     config?.openai?.codexOauthDefaultAuth === "apiKey" ? "apiKey" : "oauth";
   const codexOauthDefaultAuthIsEditable = codexOauthIsConnected && openaiApiKeySet;
