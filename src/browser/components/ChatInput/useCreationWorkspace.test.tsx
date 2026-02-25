@@ -650,10 +650,8 @@ describe("useCreationWorkspace", () => {
       trustDialogProps.onCancel();
     });
 
-    if (!handleSendPromise) {
-      throw new Error("Expected handleSend promise");
-    }
-    const handleSendResult = await handleSendPromise;
+    // handleSendPromise is assigned inside act() which TypeScript's control flow cannot track
+    const handleSendResult = await (handleSendPromise as Promise<CreationSendResult>);
     expect(handleSendResult).toEqual({ success: false });
     expect(workspaceApi.create.mock.calls.length).toBe(0);
   });
