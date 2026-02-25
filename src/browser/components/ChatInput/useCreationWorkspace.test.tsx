@@ -651,7 +651,7 @@ describe("useCreationWorkspace", () => {
     });
 
     // handleSendPromise is assigned inside act() which TypeScript's control flow cannot track
-    const handleSendResult = await (handleSendPromise as Promise<CreationSendResult>);
+    const handleSendResult = await (handleSendPromise as unknown as Promise<CreationSendResult>);
     expect(handleSendResult).toEqual({ success: false });
     expect(workspaceApi.create.mock.calls.length).toBe(0);
   });
