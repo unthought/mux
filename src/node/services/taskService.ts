@@ -140,6 +140,8 @@ interface PendingTaskWaiter {
   resolve: (report: { reportMarkdown: string; title?: string }) => void;
   reject: (error: Error) => void;
   cleanup: () => void;
+  requestingWorkspaceId?: string;
+  backgroundOnMessageQueued: boolean;
 }
 
 interface PendingTaskStartWaiter {
@@ -221,6 +223,13 @@ function getIsoNow(): string {
   return new Date().toISOString();
 }
 
+export class ForegroundWaitBackgroundedError extends Error {
+  constructor() {
+    super("Foreground wait sent to background due to queued message");
+    this.name = "ForegroundWaitBackgroundedError";
+  }
+}
+
 export class TaskService {
   // Serialize stream-end processing per workspace to avoid races when
   // finalizing reported tasks and cleanup state transitions.
@@ -232,6 +241,10 @@ export class TaskService {
   // agent_report). Used to avoid scheduler deadlocks when maxParallelAgentTasks is low and tasks
   // spawn nested tasks in the foreground.
   private readonly foregroundAwaitCountByWorkspaceId = new Map<string, number>();
+  private readonly backgroundableForegroundWaitersByWorkspaceId = new Map<
+    string,
+    Set<PendingTaskWaiter>
+  >();
   // Cache completed reports so callers can retrieve them without re-reading disk.
   // Bounded by max entries; disk persistence is the source of truth for restart-safety.
   private readonly completedReportsByTaskId = new Map<string, CompletedAgentReportCacheEntry>();
@@ -1343,9 +1356,60 @@ export class TaskService {
     };
   }
 
+  private registerBackgroundableForegroundWaiter(
+    workspaceId: string,
+    waiter: PendingTaskWaiter
+  ): void {
+    let set = this.backgroundableForegroundWaitersByWorkspaceId.get(workspaceId);
+    if (!set) {
+      set = new Set();
+      this.backgroundableForegroundWaitersByWorkspaceId.set(workspaceId, set);
+    }
+    set.add(waiter);
+  }
+
+  private unregisterBackgroundableForegroundWaiter(
+    workspaceId: string,
+    waiter: PendingTaskWaiter
+  ): void {
+    const set = this.backgroundableForegroundWaitersByWorkspaceId.get(workspaceId);
+    if (!set) return;
+    set.delete(waiter);
+    if (set.size === 0) {
+      this.backgroundableForegroundWaitersByWorkspaceId.delete(workspaceId);
+    }
+  }
+
+  /**
+   * Reject all foreground task waiters for a workspace that opted into backgrounding
+   * when a new message is queued. Returns the number of waiters signaled.
+   * Safe to call repeatedly — already-cleaned-up waiters are skipped.
+   */
+  backgroundForegroundWaitsForWorkspace(workspaceId: string): number {
+    const set = this.backgroundableForegroundWaitersByWorkspaceId.get(workspaceId);
+    if (!set || set.size === 0) return 0;
+
+    const waiters = [...set];
+    let count = 0;
+    for (const waiter of waiters) {
+      try {
+        waiter.reject(new ForegroundWaitBackgroundedError());
+        count++;
+      } catch {
+        // waiter already resolved/rejected — ignore
+      }
+    }
+    return count;
+  }
+
   async waitForAgentReport(
     taskId: string,
-    options?: { timeoutMs?: number; abortSignal?: AbortSignal; requestingWorkspaceId?: string }
+    options?: {
+      timeoutMs?: number;
+      abortSignal?: AbortSignal;
+      requestingWorkspaceId?: string;
+      backgroundOnMessageQueued?: boolean;
+    }
   ): Promise<{ reportMarkdown: string; title?: string }> {
     assert(taskId.length > 0, "waitForAgentReport: taskId must be non-empty");
 
@@ -1461,6 +1525,8 @@ export class TaskService {
 
         const entry: PendingTaskWaiter = {
           createdAt: Date.now(),
+          requestingWorkspaceId: undefined,
+          backgroundOnMessageQueued: false,
           resolve: (report) => {
             entry.cleanup();
             resolve(report);
@@ -1470,6 +1536,10 @@ export class TaskService {
             reject(error);
           },
           cleanup: () => {
+            if (entry.requestingWorkspaceId && entry.backgroundOnMessageQueued) {
+              this.unregisterBackgroundableForegroundWaiter(entry.requestingWorkspaceId, entry);
+            }
+
             const current = this.pendingWaitersByTaskId.get(taskId);
             if (current) {
               const next = current.filter((w) => w !== entry);
@@ -1505,6 +1575,16 @@ export class TaskService {
         const list = this.pendingWaitersByTaskId.get(taskId) ?? [];
         list.push(entry);
         this.pendingWaitersByTaskId.set(taskId, list);
+
+        const shouldBackgroundOnQueuedMessage = Boolean(
+          requestingWorkspaceId && options?.backgroundOnMessageQueued
+        );
+        entry.requestingWorkspaceId = requestingWorkspaceId;
+        entry.backgroundOnMessageQueued = shouldBackgroundOnQueuedMessage;
+
+        if (shouldBackgroundOnQueuedMessage && requestingWorkspaceId) {
+          this.registerBackgroundableForegroundWaiter(requestingWorkspaceId, entry);
+        }
 
         // Don't start the execution timeout while the task is still queued.
         // The timer starts once the child actually begins running (queued -> running).

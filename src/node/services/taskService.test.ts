@@ -11,7 +11,7 @@ import {
   readSubagentGitPatchArtifact,
 } from "@/node/services/subagentGitPatchArtifacts";
 import { upsertSubagentReportArtifact } from "@/node/services/subagentReportArtifacts";
-import { TaskService } from "@/node/services/taskService";
+import { TaskService, ForegroundWaitBackgroundedError } from "@/node/services/taskService";
 import type { WorkspaceForkParams } from "@/node/runtime/Runtime";
 import { WorktreeRuntime } from "@/node/runtime/WorktreeRuntime";
 import { createRuntime } from "@/node/runtime/runtimeFactory";
@@ -2237,6 +2237,102 @@ describe("TaskService", () => {
       }),
       expect.objectContaining({ synthetic: true })
     );
+  });
+
+  describe("backgroundForegroundWaitsForWorkspace", () => {
+    test("rejects opted-in foreground waiters with ForegroundWaitBackgroundedError", async () => {
+      const config = await createTestConfig(rootDir);
+
+      const parentId = "parent-ws";
+      const childId = "child-task-ws";
+      const projectPath = "/test/project";
+
+      await config.saveConfig({
+        projects: new Map([
+          [
+            projectPath,
+            {
+              workspaces: [
+                { path: `${projectPath}/parent`, id: parentId, name: "parent" },
+                {
+                  path: `${projectPath}/child`,
+                  id: childId,
+                  name: "agent_explore_child",
+                  parentWorkspaceId: parentId,
+                  agentType: "explore",
+                  taskStatus: "running",
+                },
+              ],
+            },
+          ],
+        ]),
+        taskSettings: { maxParallelAgentTasks: 2, maxTaskNestingDepth: 3 },
+      });
+
+      const { taskService } = createTaskServiceHarness(config);
+
+      const waitPromise = taskService.waitForAgentReport(childId, {
+        requestingWorkspaceId: parentId,
+        backgroundOnMessageQueued: true,
+      });
+
+      const count = taskService.backgroundForegroundWaitsForWorkspace(parentId);
+      expect(count).toBe(1);
+
+      await expect(waitPromise).rejects.toThrow(ForegroundWaitBackgroundedError);
+
+      const count2 = taskService.backgroundForegroundWaitsForWorkspace(parentId);
+      expect(count2).toBe(0);
+    });
+
+    test("does not affect foreground waiters that did not opt into backgrounding", async () => {
+      const config = await createTestConfig(rootDir);
+
+      const parentId = "parent-ws";
+      const childId = "child-task-ws";
+      const projectPath = "/test/project";
+
+      await config.saveConfig({
+        projects: new Map([
+          [
+            projectPath,
+            {
+              workspaces: [
+                { path: `${projectPath}/parent`, id: parentId, name: "parent" },
+                {
+                  path: `${projectPath}/child`,
+                  id: childId,
+                  name: "agent_explore_child",
+                  parentWorkspaceId: parentId,
+                  agentType: "explore",
+                  taskStatus: "running",
+                },
+              ],
+            },
+          ],
+        ]),
+        taskSettings: { maxParallelAgentTasks: 2, maxTaskNestingDepth: 3 },
+      });
+
+      const { taskService } = createTaskServiceHarness(config);
+
+      const waitPromise = taskService.waitForAgentReport(childId, {
+        requestingWorkspaceId: parentId,
+      });
+
+      const count = taskService.backgroundForegroundWaitsForWorkspace(parentId);
+      expect(count).toBe(0);
+
+      const internal = taskService as unknown as {
+        resolveWaiters: (
+          taskId: string,
+          report: { reportMarkdown: string; title?: string }
+        ) => void;
+      };
+      internal.resolveWaiters(childId, { reportMarkdown: "ok" });
+
+      await expect(waitPromise).resolves.toEqual({ reportMarkdown: "ok" });
+    });
   });
 
   test("waitForAgentReport does not time out while task is queued", async () => {
