@@ -15,7 +15,7 @@ export function SecuritySection() {
   const [pendingPath, setPendingPath] = useState<string | null>(null);
 
   const handleToggleTrust = async (projectPath: string, currentlyTrusted: boolean) => {
-    if (!api) return;
+    if (!api || pendingPath != null) return;
     try {
       setPendingPath(projectPath);
       await api.projects.setTrust({ projectPath, trusted: !currentlyTrusted });
@@ -62,7 +62,7 @@ export function SecuritySection() {
                 <Button
                   size="sm"
                   variant={trusted ? "outline" : "default"}
-                  disabled={pendingPath === path}
+                  disabled={pendingPath != null}
                   aria-label={`${trusted ? "Revoke trust for" : "Trust"} ${name}`}
                   onClick={() => {
                     void handleToggleTrust(path, trusted);
