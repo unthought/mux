@@ -1718,7 +1718,7 @@ export class WorkspaceService extends EventEmitter {
           directoryName: finalBranchName,
           initLogger,
           abortSignal: initAbortController.signal,
-          trusted: this.config.loadConfigOrDefault().projects.get(projectPath)?.trusted ?? false,
+          trusted: projectConfig.trusted ?? false,
         });
 
         if (createResult.success) break;
@@ -1819,7 +1819,7 @@ export class WorkspaceService extends EventEmitter {
             initLogger,
             env: secrets,
             abortSignal: initAbortController.signal,
-            trusted: this.config.loadConfigOrDefault().projects.get(projectPath)?.trusted ?? false,
+            trusted: projectConfig.trusted ?? false,
           },
           workspaceId,
           log
@@ -1951,7 +1951,8 @@ export class WorkspaceService extends EventEmitter {
         // Delete workspace from runtime first - if this fails with force=false, we abort
         // and keep workspace in config so user can retry. This prevents orphaned directories.
         const trusted =
-          this.config.loadConfigOrDefault().projects.get(projectPath)?.trusted ?? false;
+          this.config.loadConfigOrDefault().projects.get(stripTrailingSlashes(projectPath))
+            ?.trusted ?? false;
         const deleteResult = await runtime.deleteWorkspace(
           projectPath,
           metadata.name, // use branch name
@@ -2232,7 +2233,9 @@ export class WorkspaceService extends EventEmitter {
         workspaceName: oldName,
       });
 
-      const trusted = this.config.loadConfigOrDefault().projects.get(projectPath)?.trusted ?? false;
+      const trusted =
+        this.config.loadConfigOrDefault().projects.get(stripTrailingSlashes(projectPath))
+          ?.trusted ?? false;
       const renameResult = await runtime.renameWorkspace(
         projectPath,
         oldName,
@@ -3082,8 +3085,7 @@ export class WorkspaceService extends EventEmitter {
           sourceRuntimeConfig,
           allowCreateFallback: false,
           abortSignal: initAbortController.signal,
-          trusted:
-            this.config.loadConfigOrDefault().projects.get(foundProjectPath)?.trusted ?? false,
+          trusted: projectConfig.trusted ?? false,
         });
       } catch (error) {
         // Guarantee init lifecycle cleanup when orchestrateFork rejects.
@@ -3118,8 +3120,7 @@ export class WorkspaceService extends EventEmitter {
           initLogger,
           env: secrets,
           abortSignal: initAbortController.signal,
-          trusted:
-            this.config.loadConfigOrDefault().projects.get(foundProjectPath)?.trusted ?? false,
+          trusted: projectConfig.trusted ?? false,
         },
         newWorkspaceId,
         log
@@ -3144,8 +3145,7 @@ export class WorkspaceService extends EventEmitter {
           );
         }
       } catch (copyError) {
-        const forkTrusted =
-          this.config.loadConfigOrDefault().projects.get(foundProjectPath)?.trusted ?? false;
+        const forkTrusted = projectConfig.trusted ?? false;
         await targetRuntime.deleteWorkspace(
           foundProjectPath,
           resolvedName,
@@ -4494,7 +4494,9 @@ export class WorkspaceService extends EventEmitter {
       const workspacePath = runtime.getWorkspacePath(metadata.projectPath, metadata.name);
 
       // Read trust state so tool_env is sourced for trusted projects
-      const projectConfig = this.config.loadConfigOrDefault().projects.get(metadata.projectPath);
+      const projectConfig = this.config
+        .loadConfigOrDefault()
+        .projects.get(stripTrailingSlashes(metadata.projectPath));
 
       // Create bash tool
       const bashTool = createBashTool({
