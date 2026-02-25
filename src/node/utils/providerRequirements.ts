@@ -135,6 +135,9 @@ function resolveApiKeyFile(filePath: string | undefined): string | null {
   const expanded = filePath.startsWith("~") ? path.join(os.homedir(), filePath.slice(1)) : filePath;
 
   try {
+    // Guard against non-regular files (FIFOs, devices) that could block indefinitely
+    const stat = fs.statSync(expanded);
+    if (!stat.isFile() || stat.size > 4096) return null;
     const content = fs.readFileSync(expanded, "utf-8").trim();
     return content || null;
   } catch {
