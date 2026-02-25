@@ -121,6 +121,7 @@ export const SecretsSection: React.FC = () => {
   const [visibleSecrets, setVisibleSecrets] = useState<Set<number>>(() => new Set());
 
   const [globalSecretKeys, setGlobalSecretKeys] = useState<string[]>([]);
+  const [injectedGlobalSecretKeys, setInjectedGlobalSecretKeys] = useState<string[]>([]);
 
   // Track the last plaintext value per row index so toggling Source back to
   // "Value" restores the user's input instead of clearing it.
@@ -165,10 +166,15 @@ export const SecretsSection: React.FC = () => {
     .slice()
     .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
 
+  const sortedInjectedGlobalSecretKeys = injectedGlobalSecretKeys
+    .slice()
+    .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
+
   const loadSecrets = useCallback(async () => {
     if (!api) {
       setLoadedSecrets([]);
       setSecrets([]);
+      setInjectedGlobalSecretKeys([]);
       setVisibleSecrets(new Set());
       setError(null);
       return;
@@ -177,6 +183,7 @@ export const SecretsSection: React.FC = () => {
     if (scope === "project" && !currentProjectPath) {
       setLoadedSecrets([]);
       setSecrets([]);
+      setInjectedGlobalSecretKeys([]);
       setVisibleSecrets(new Set());
       setError(null);
       return;
@@ -186,17 +193,38 @@ export const SecretsSection: React.FC = () => {
     setError(null);
 
     try {
-      const nextSecrets = await api.secrets.get(
-        scope === "project" ? { projectPath: currentProjectPath } : {}
-      );
-      setLoadedSecrets(nextSecrets);
-      setSecrets(nextSecrets);
+      if (scope === "project") {
+        const projectPath = currentProjectPath;
+        if (!projectPath) {
+          setLoadedSecrets([]);
+          setSecrets([]);
+          setInjectedGlobalSecretKeys([]);
+          setVisibleSecrets(new Set());
+          setError(null);
+          return;
+        }
+
+        const [nextSecrets, injectedKeys] = await Promise.all([
+          api.secrets.get({ projectPath }),
+          api.secrets.getInjectedGlobals({ projectPath }),
+        ]);
+        setLoadedSecrets(nextSecrets);
+        setSecrets(nextSecrets);
+        setInjectedGlobalSecretKeys(injectedKeys);
+      } else {
+        const nextSecrets = await api.secrets.get({});
+        setLoadedSecrets(nextSecrets);
+        setSecrets(nextSecrets);
+        setInjectedGlobalSecretKeys([]);
+      }
+
       setVisibleSecrets(new Set());
       lastLiteralValuesRef.current = new Map();
     } catch (err) {
       const message = err instanceof Error ? err.message : "Failed to load secrets";
       setLoadedSecrets([]);
       setSecrets([]);
+      setInjectedGlobalSecretKeys([]);
       setVisibleSecrets(new Set());
       lastLiteralValuesRef.current = new Map();
       setError(message);
@@ -388,6 +416,15 @@ export const SecretsSection: React.FC = () => {
 
       if (scope === "global") {
         setGlobalSecretKeys(validSecrets.map((s) => s.key));
+        setInjectedGlobalSecretKeys([]);
+      } else {
+        const projectPath = currentProjectPath;
+        if (!projectPath) {
+          setInjectedGlobalSecretKeys([]);
+        } else {
+          const injectedKeys = await api.secrets.getInjectedGlobals({ projectPath });
+          setInjectedGlobalSecretKeys(injectedKeys);
+        }
       }
       setVisibleSecrets(new Set());
       // Save compacts rows (filters out empty entries), which shifts indices.
@@ -462,6 +499,36 @@ export const SecretsSection: React.FC = () => {
               ))}
             </SelectContent>
           </Select>
+        </div>
+      )}
+
+      {scope === "project" && currentProjectPath && (
+        <div className="space-y-2">
+          <div>
+            <div className="text-foreground text-sm">Injected from Global</div>
+            <div className="text-muted text-xs">
+              Read-only. Project secrets override injected globals when keys match.
+            </div>
+          </div>
+
+          {sortedInjectedGlobalSecretKeys.length === 0 ? (
+            <div className="text-muted border-border-medium rounded-md border border-dashed px-3 py-2 text-xs">
+              No global secrets are currently injected into this project.
+            </div>
+          ) : (
+            <div className="border-border-medium bg-background-secondary rounded-md border px-3 py-2">
+              <div className="flex flex-wrap gap-1.5">
+                {sortedInjectedGlobalSecretKeys.map((key) => (
+                  <code
+                    key={key}
+                    className="bg-modal-bg border-border-medium text-foreground inline-flex items-center rounded border px-2 py-0.5 font-mono text-[12px]"
+                  >
+                    {key}
+                  </code>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
