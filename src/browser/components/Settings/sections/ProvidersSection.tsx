@@ -1155,13 +1155,13 @@ export function ProvidersSection() {
                       Get API Key
                       <ExternalLink className="h-2.5 w-2.5" />
                     </a>
-                    {provider === "anthropic" &&
-                      configured &&
-                      config?.[provider]?.apiKeySet === false && (
-                        <div className="text-muted text-xs">
-                          Configured via environment variables.
-                        </div>
-                      )}
+                    {configured && config?.[provider]?.apiKeySet === false && (
+                      <div className="text-muted text-xs">
+                        {config?.[provider]?.apiKeyFile
+                          ? "Configured via API key file."
+                          : "Configured via environment variables."}
+                      </div>
+                    )}
                   </div>
                 )}
 
