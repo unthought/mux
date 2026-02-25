@@ -92,8 +92,6 @@ export interface TaskCreateArgs {
     programmaticToolCallingExclusive?: boolean;
     execSubagentHardRestart?: boolean;
   };
-  /** Whether the parent should block while this task is active. Defaults to "blocking". */
-  taskAwaitPolicy?: "blocking" | "background";
 }
 
 export interface TaskCreateResult {
@@ -138,6 +136,7 @@ interface AgentTaskIndex {
 }
 
 interface PendingTaskWaiter {
+  taskId: string;
   createdAt: number;
   resolve: (report: { reportMarkdown: string; title?: string }) => void;
   reject: (error: Error) => void;
@@ -247,6 +246,7 @@ export class TaskService {
     string,
     Set<PendingTaskWaiter>
   >();
+  private readonly userBackgroundedTaskIds = new Set<string>();
   // Cache completed reports so callers can retrieve them without re-reading disk.
   // Bounded by max entries; disk persistence is the source of truth for restart-safety.
   private readonly completedReportsByTaskId = new Map<string, CompletedAgentReportCacheEntry>();
@@ -962,7 +962,6 @@ export class TaskService {
           taskModelString,
           taskThinkingLevel: effectiveThinkingLevel,
           taskExperiments: args.experiments,
-          taskAwaitPolicy: args.taskAwaitPolicy,
         });
         return config;
       });
@@ -1056,7 +1055,6 @@ export class TaskService {
         taskModelString,
         taskThinkingLevel: effectiveThinkingLevel,
         taskExperiments: args.experiments,
-        taskAwaitPolicy: args.taskAwaitPolicy,
       });
       return config;
     });
@@ -1397,6 +1395,7 @@ export class TaskService {
     let count = 0;
     for (const waiter of waiters) {
       try {
+        this.userBackgroundedTaskIds.add(waiter.taskId);
         waiter.reject(new ForegroundWaitBackgroundedError());
         count++;
       } catch {
@@ -1528,6 +1527,7 @@ export class TaskService {
         };
 
         const entry: PendingTaskWaiter = {
+          taskId,
           createdAt: Date.now(),
           requestingWorkspaceId: undefined,
           backgroundOnMessageQueued: false,
@@ -1699,46 +1699,6 @@ export class TaskService {
     return result;
   }
 
-  /**
-   * Whether this task workspace requires its parent to block (nudge on stream-end).
-   * Missing policy defaults to "blocking" for backward compatibility with existing tasks.
-   */
-  private isBlockingTask(entry: { taskAwaitPolicy?: string }): boolean {
-    return (entry.taskAwaitPolicy ?? "blocking") === "blocking";
-  }
-
-  /**
-   * Like listActiveDescendantAgentTaskIds, but only returns descendants with
-   * blocking await policy (i.e., those that should trigger parent auto-resume nudges).
-   */
-  listActiveBlockingDescendantTaskIds(workspaceId: string): string[] {
-    assert(
-      workspaceId.length > 0,
-      "listActiveBlockingDescendantTaskIds: workspaceId must be non-empty"
-    );
-
-    const cfg = this.config.loadConfigOrDefault();
-    const index = this.buildAgentTaskIndex(cfg);
-
-    const activeStatuses = new Set<AgentTaskStatus>(["queued", "running", "awaiting_report"]);
-    const result: string[] = [];
-    const stack: string[] = [...(index.childrenByParent.get(workspaceId) ?? [])];
-    while (stack.length > 0) {
-      const next = stack.pop()!;
-      const entry = index.byId.get(next);
-      const status = entry?.taskStatus;
-      if (status && activeStatuses.has(status) && this.isBlockingTask(entry)) {
-        result.push(next);
-      }
-      const children = index.childrenByParent.get(next);
-      if (children) {
-        for (const child of children) {
-          stack.push(child);
-        }
-      }
-    }
-    return result;
-  }
   listDescendantAgentTasks(
     workspaceId: string,
     options?: { statuses?: AgentTaskStatus[] }
@@ -2578,13 +2538,12 @@ export class TaskService {
         return;
       }
 
-      // Use the persisted taskAwaitPolicy to determine which descendants require
-      // the parent to stay active. Background tasks (explicitly spawned with
-      // run_in_background=true) are excluded — the tasks-completed resume path
-      // (deliverReportToParent) will nudge the parent when they finish.
-      const blockingTaskIds = this.listActiveBlockingDescendantTaskIds(workspaceId);
+      // Foreground waits can be backgrounded at runtime when users queue another message.
+      // Those task IDs are tracked in-memory and excluded from parent auto-resume nudges.
+      const activeTaskIds = this.listActiveDescendantAgentTaskIds(workspaceId);
+      const blockingTaskIds = activeTaskIds.filter((id) => !this.userBackgroundedTaskIds.has(id));
       if (blockingTaskIds.length === 0) {
-        log.debug("Skipping parent auto-resume: no active blocking descendants (background-only)", {
+        log.debug("Skipping parent auto-resume: all active descendants were queue-backgrounded", {
           workspaceId,
         });
         return;
@@ -3030,6 +2989,8 @@ export class TaskService {
     childEntry: { projectPath: string; workspace: WorkspaceConfigEntry } | null | undefined,
     reportArgs: { reportMarkdown: string; title?: string }
   ): Promise<void> {
+    this.userBackgroundedTaskIds.delete(childWorkspaceId);
+
     assert(
       childWorkspaceId.length > 0,
       "finalizeAgentTaskReport: childWorkspaceId must be non-empty"
@@ -3184,6 +3145,8 @@ export class TaskService {
   }
 
   private resolveWaiters(taskId: string, report: { reportMarkdown: string; title?: string }): void {
+    this.userBackgroundedTaskIds.delete(taskId);
+
     const cfg = this.config.loadConfigOrDefault();
     const parentById = this.buildAgentTaskIndex(cfg).parentById;
     const ancestorWorkspaceIds = this.listAncestorWorkspaceIdsUsingParentById(parentById, taskId);
@@ -3212,6 +3175,8 @@ export class TaskService {
   }
 
   private rejectWaiters(taskId: string, error: Error): void {
+    this.userBackgroundedTaskIds.delete(taskId);
+
     const waiters = this.pendingWaitersByTaskId.get(taskId);
     if (!waiters || waiters.length === 0) {
       return;

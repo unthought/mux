@@ -883,7 +883,6 @@ export class Config {
               taskThinkingLevel: workspace.taskThinkingLevel,
               taskPrompt: workspace.taskPrompt,
               taskTrunkBranch: workspace.taskTrunkBranch,
-              taskAwaitPolicy: workspace.taskAwaitPolicy,
               archivedAt: workspace.archivedAt,
               unarchivedAt: workspace.unarchivedAt,
               sectionId: workspace.sectionId,
@@ -970,7 +969,6 @@ export class Config {
             metadata.taskThinkingLevel ??= workspace.taskThinkingLevel;
             metadata.taskPrompt ??= workspace.taskPrompt;
             metadata.taskTrunkBranch ??= workspace.taskTrunkBranch;
-            metadata.taskAwaitPolicy ??= workspace.taskAwaitPolicy;
             // Preserve archived timestamps from config
             metadata.archivedAt ??= workspace.archivedAt;
             metadata.unarchivedAt ??= workspace.unarchivedAt;
@@ -1021,7 +1019,6 @@ export class Config {
               taskThinkingLevel: workspace.taskThinkingLevel,
               taskPrompt: workspace.taskPrompt,
               taskTrunkBranch: workspace.taskTrunkBranch,
-              taskAwaitPolicy: workspace.taskAwaitPolicy,
               archivedAt: workspace.archivedAt,
               unarchivedAt: workspace.unarchivedAt,
               sectionId: workspace.sectionId,
@@ -1066,7 +1063,6 @@ export class Config {
             taskThinkingLevel: workspace.taskThinkingLevel,
             taskPrompt: workspace.taskPrompt,
             taskTrunkBranch: workspace.taskTrunkBranch,
-            taskAwaitPolicy: workspace.taskAwaitPolicy,
             sectionId: workspace.sectionId,
           };
           workspaceMetadata.push(this.addPathsToMetadata(metadata, workspace.path, projectPath));
@@ -1127,7 +1123,6 @@ export class Config {
         taskThinkingLevel: metadata.taskThinkingLevel,
         taskPrompt: metadata.taskPrompt,
         taskTrunkBranch: metadata.taskTrunkBranch,
-        taskAwaitPolicy: metadata.taskAwaitPolicy,
         archivedAt: metadata.archivedAt,
         unarchivedAt: metadata.unarchivedAt,
         sectionId: metadata.sectionId,

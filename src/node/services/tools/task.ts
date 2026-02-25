@@ -91,7 +91,6 @@ export const createTaskTool: ToolFactory = (config: ToolConfiguration) => {
         modelString,
         thinkingLevel,
         experiments: config.experiments,
-        taskAwaitPolicy: run_in_background ? "background" : "blocking",
       });
 
       if (!created.success) {

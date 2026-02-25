@@ -1378,7 +1378,7 @@ describe("TaskService", () => {
     );
   });
 
-  test("skips auto-resume when all active descendants have background taskAwaitPolicy", async () => {
+  test("does not auto-resume for queue-backgrounded descendants", async () => {
     const config = await createTestConfig(rootDir);
 
     const projectPath = path.join(rootDir, "repo");
@@ -1406,7 +1406,6 @@ describe("TaskService", () => {
                 taskStatus: "running",
                 taskModelString: "openai:gpt-5.2",
                 taskThinkingLevel: "medium",
-                taskAwaitPolicy: "background",
               },
             ],
           },
@@ -1418,6 +1417,14 @@ describe("TaskService", () => {
     const { aiService } = createAIServiceMocks(config);
     const { workspaceService, sendMessage } = createWorkspaceServiceMocks();
     const { taskService } = createTaskServiceHarness(config, { aiService, workspaceService });
+
+    const waitPromise = taskService.waitForAgentReport(childTaskId, {
+      requestingWorkspaceId: rootWorkspaceId,
+      backgroundOnMessageQueued: true,
+    });
+    expect(taskService.backgroundForegroundWaitsForWorkspace(rootWorkspaceId)).toBe(1);
+    const waitError = await waitPromise.catch((error: unknown) => error);
+    expect(waitError).toBeInstanceOf(ForegroundWaitBackgroundedError);
 
     const internal = taskService as unknown as {
       handleStreamEnd: (event: StreamEndEvent) => Promise<void>;
@@ -1434,7 +1441,7 @@ describe("TaskService", () => {
     expect(sendMessage).not.toHaveBeenCalled();
   });
 
-  test("still nudges when active descendants have blocking or missing taskAwaitPolicy", async () => {
+  test("still nudges when active descendants were not queue-backgrounded", async () => {
     const config = await createTestConfig(rootDir);
 
     const projectPath = path.join(rootDir, "repo");
@@ -1498,7 +1505,7 @@ describe("TaskService", () => {
     );
   });
 
-  test("cross-stream regression — background task suppresses nudge on subsequent stream with empty parts", async () => {
+  test("cross-stream regression — queue-backgrounded task suppresses nudges on later stream ends", async () => {
     const config = await createTestConfig(rootDir);
 
     const projectPath = path.join(rootDir, "repo");
@@ -1526,7 +1533,6 @@ describe("TaskService", () => {
                 taskStatus: "running",
                 taskModelString: "openai:gpt-5.2",
                 taskThinkingLevel: "medium",
-                taskAwaitPolicy: "background",
               },
             ],
           },
@@ -1538,6 +1544,14 @@ describe("TaskService", () => {
     const { aiService } = createAIServiceMocks(config);
     const { workspaceService, sendMessage } = createWorkspaceServiceMocks();
     const { taskService } = createTaskServiceHarness(config, { aiService, workspaceService });
+
+    const waitPromise = taskService.waitForAgentReport(childTaskId, {
+      requestingWorkspaceId: rootWorkspaceId,
+      backgroundOnMessageQueued: true,
+    });
+    expect(taskService.backgroundForegroundWaitsForWorkspace(rootWorkspaceId)).toBe(1);
+    const waitError = await waitPromise.catch((error: unknown) => error);
+    expect(waitError).toBeInstanceOf(ForegroundWaitBackgroundedError);
 
     const internal = taskService as unknown as {
       handleStreamEnd: (event: StreamEndEvent) => Promise<void>;
@@ -1562,7 +1576,7 @@ describe("TaskService", () => {
     expect(sendMessage).not.toHaveBeenCalled();
   });
 
-  test("mixed descendants — nudges only for blocking tasks", async () => {
+  test("mixed descendants — nudges only for non-queue-backgrounded tasks", async () => {
     const config = await createTestConfig(rootDir);
 
     const projectPath = path.join(rootDir, "repo");
@@ -1591,7 +1605,6 @@ describe("TaskService", () => {
                 taskStatus: "running",
                 taskModelString: "openai:gpt-5.2",
                 taskThinkingLevel: "medium",
-                taskAwaitPolicy: "background",
               },
               {
                 path: path.join(projectPath, "child-task-blocking"),
@@ -1613,6 +1626,14 @@ describe("TaskService", () => {
     const { aiService } = createAIServiceMocks(config);
     const { workspaceService, sendMessage } = createWorkspaceServiceMocks();
     const { taskService } = createTaskServiceHarness(config, { aiService, workspaceService });
+
+    const waitPromise = taskService.waitForAgentReport(backgroundTaskId, {
+      requestingWorkspaceId: rootWorkspaceId,
+      backgroundOnMessageQueued: true,
+    });
+    expect(taskService.backgroundForegroundWaitsForWorkspace(rootWorkspaceId)).toBe(1);
+    const waitError = await waitPromise.catch((error: unknown) => error);
+    expect(waitError).toBeInstanceOf(ForegroundWaitBackgroundedError);
 
     const internal = taskService as unknown as {
       handleStreamEnd: (event: StreamEndEvent) => Promise<void>;

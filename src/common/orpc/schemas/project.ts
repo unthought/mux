@@ -108,10 +108,6 @@ export const WorkspaceConfigSchema = z.object({
     description:
       "Trunk branch used to create/init this agent task workspace (used for restart-safe init on queued tasks).",
   }),
-  taskAwaitPolicy: z
-    .enum(["blocking", "background"])
-    .optional()
-    .meta({ description: "Whether the parent should block (nudge) while this task is active." }),
   mcp: WorkspaceMCPOverridesSchema.optional().meta({
     description:
       "LEGACY: Per-workspace MCP overrides (migrated to <workspace>/.mux/mcp.local.jsonc)",
