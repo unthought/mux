@@ -2133,6 +2133,7 @@ export class TaskService {
         });
         taskQueueDebug("TaskService.maybeStartQueuedTasks skipped (untrusted)", { taskId });
         await this.setTaskStatus(taskId, "interrupted");
+        this.rejectWaiters(taskId, new Error("Task skipped: project is not trusted"));
         continue;
       }
 
