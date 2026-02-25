@@ -2978,6 +2978,16 @@ export class WorkspaceService extends EventEmitter {
         }
       }
 
+      // Trust gate: block fork for untrusted projects.
+      // Same defense-in-depth as create() — the frontend shows a dialog,
+      // but forking is a secondary creation path that needs backend gating.
+      const projectConfig = this.config.loadConfigOrDefault().projects.get(foundProjectPath);
+      if (!projectConfig?.trusted) {
+        return Err(
+          "This project must be trusted before creating workspaces. Trust the project in Settings → Security, or create a workspace from the project page."
+        );
+      }
+
       // Auto-generate branch name (and title) when user omits one (seamless fork).
       // Uses pattern: {parentName}-fork-{N} for branch, "{parentTitle} (N)" for title.
       const isAutoName = newName == null;
