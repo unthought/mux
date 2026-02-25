@@ -197,8 +197,9 @@ export class ProviderService {
       // Use providerInfo.isEnabled (not the local `isEnabled`) because gateway
       // overrides it from global config — using the providers.jsonc value would
       // make a disabled gateway appear configured.
-      providerInfo.isConfigured =
-        providerInfo.isEnabled && checkProviderConfigured(provider, config).isConfigured;
+      const creds = checkProviderConfigured(provider, config);
+      providerInfo.isConfigured = providerInfo.isEnabled && creds.isConfigured;
+      providerInfo.apiKeySource = creds.apiKeySource;
 
       if (provider === "openai" && isEnabled && codexOauthSet) {
         providerInfo.isConfigured = true;

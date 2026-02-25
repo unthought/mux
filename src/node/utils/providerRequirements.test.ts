@@ -125,15 +125,12 @@ describe("resolveProviderCredentials - apiKeyFile", () => {
   });
 
   it("supports ~ expansion for home directory", () => {
-    // Write a file in the actual home directory temporarily
-    const homeKeyFile = path.join(os.homedir(), ".mux-test-api-key");
+    // Use a unique filename to avoid collisions with parallel test runs
+    const uniqueName = `.mux-test-api-key-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const homeKeyFile = path.join(os.homedir(), uniqueName);
     writeFileSync(homeKeyFile, "sk-from-home", "utf-8");
     try {
-      const result = resolveProviderCredentials(
-        "anthropic",
-        { apiKeyFile: "~/.mux-test-api-key" },
-        {}
-      );
+      const result = resolveProviderCredentials("anthropic", { apiKeyFile: `~/${uniqueName}` }, {});
       expect(result.isConfigured).toBe(true);
       expect(result.apiKey).toBe("sk-from-home");
     } finally {

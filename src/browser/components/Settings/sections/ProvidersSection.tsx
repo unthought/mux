@@ -1157,9 +1157,11 @@ export function ProvidersSection() {
                     </a>
                     {configured && config?.[provider]?.apiKeySet === false && (
                       <div className="text-muted text-xs">
-                        {config?.[provider]?.apiKeyFile
+                        {config?.[provider]?.apiKeySource === "file"
                           ? "Configured via API key file."
-                          : "Configured via environment variables."}
+                          : config?.[provider]?.apiKeySource === "env"
+                            ? "Configured via environment variables."
+                            : null}
                       </div>
                     )}
                   </div>

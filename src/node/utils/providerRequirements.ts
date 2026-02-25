@@ -114,10 +114,15 @@ export interface ResolvedCredentials {
   couponCode?: string; // mux-gateway
   baseUrl?: string; // from config or env
   organization?: string; // openai
+  /** Where the API key was actually resolved from */
+  apiKeySource?: "config" | "file" | "env";
 }
 
 /** Legacy alias for backward compatibility */
-export type ProviderConfigCheck = Pick<ResolvedCredentials, "isConfigured" | "missingRequirement">;
+export type ProviderConfigCheck = Pick<
+  ResolvedCredentials,
+  "isConfigured" | "missingRequirement" | "apiKeySource"
+>;
 
 /**
  * Read an API key from a file path. Supports ~ for home directory.
@@ -189,7 +194,9 @@ export function resolveProviderCredentials(
   const organization = config.organization ?? resolveEnv(envMapping?.organization, env);
 
   if (apiKey) {
-    return { isConfigured: true, apiKey, baseUrl, organization };
+    // Track which source the key actually resolved from
+    const apiKeySource = configKey ? "config" : fileKey ? "file" : "env";
+    return { isConfigured: true, apiKey, baseUrl, organization, apiKeySource };
   }
 
   return { isConfigured: false, missingRequirement: "api_key" };
@@ -204,8 +211,12 @@ export function checkProviderConfigured(
   config: ProviderConfigRaw,
   env: Record<string, string | undefined> = process.env
 ): ProviderConfigCheck {
-  const { isConfigured, missingRequirement } = resolveProviderCredentials(provider, config, env);
-  return { isConfigured, missingRequirement };
+  const { isConfigured, missingRequirement, apiKeySource } = resolveProviderCredentials(
+    provider,
+    config,
+    env
+  );
+  return { isConfigured, missingRequirement, apiKeySource };
 }
 
 // ============================================================================
