@@ -3348,6 +3348,12 @@ export class WorkspaceService extends EventEmitter {
           }
         }
 
+        // Background any foreground task waits so the queued message can dispatch promptly.
+        const queueDispatchMode = normalizedOptions?.queueDispatchMode ?? "tool-end";
+        if (queueDispatchMode === "tool-end") {
+          this.taskService?.backgroundForegroundWaitsForWorkspace(workspaceId);
+        }
+
         session.queueMessage(message, normalizedOptions, {
           synthetic: internal?.synthetic,
         });
