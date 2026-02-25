@@ -2282,6 +2282,7 @@ const ChatInputInner: React.FC<ChatInputProps> = (props) => {
 
   return (
     <Wrapper {...wrapperProps}>
+      {creationState.trustDialog}
       {/* Loading overlay during workspace creation */}
       {variant === "creation" && (
         <CreationCenterContent

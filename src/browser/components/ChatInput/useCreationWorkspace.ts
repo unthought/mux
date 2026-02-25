@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { createElement, useState, useEffect, useCallback, useRef } from "react";
 import type { FrontendWorkspaceMetadata } from "@/common/types/workspace";
 import type {
   CoderWorkspaceConfig,
@@ -34,6 +34,8 @@ import { useOptionalWorkspaceContext } from "@/browser/contexts/WorkspaceContext
 import { useRouter } from "@/browser/contexts/RouterContext";
 import type { Toast } from "@/browser/components/ChatInputToast";
 import { useAPI } from "@/browser/contexts/API";
+import { useProjectContext } from "@/browser/contexts/ProjectContext";
+import { ConfirmationModal } from "@/browser/components/ConfirmationModal";
 import { useProvidersConfig } from "@/browser/hooks/useProvidersConfig";
 import type { FilePart, SendMessageOptions } from "@/common/orpc/types";
 import type { WorkspaceCreatedOptions } from "@/browser/components/ChatInput/types";
@@ -181,6 +183,8 @@ interface UseCreationWorkspaceReturn {
   reloadBranches: () => Promise<void>;
   /** Runtime availability state for each mode (loading/failed/loaded) */
   runtimeAvailabilityState: RuntimeAvailabilityState;
+  /** Trust confirmation dialog element — render in parent component tree */
+  trustDialog: React.ReactNode;
 }
 
 /** Runtime availability status for each mode */
@@ -224,12 +228,16 @@ export function useCreationWorkspace({
   // Keep router state fresh synchronously so auto-navigation checks don't lag behind route changes.
   latestRouteRef.current = { currentWorkspaceId, currentProjectId, pendingDraftId };
   const { api } = useAPI();
+  const { getProjectConfig, refreshProjects } = useProjectContext();
   const { config: providersConfig } = useProvidersConfig();
   const [branches, setBranches] = useState<string[]>([]);
   const [branchesLoaded, setBranchesLoaded] = useState(false);
   const [recommendedTrunk, setRecommendedTrunk] = useState<string | null>(null);
   const [toast, setToast] = useState<Toast | null>(null);
   const [isSending, setIsSending] = useState(false);
+  const [trustPrompt, setTrustPrompt] = useState<{
+    resolve: (trusted: boolean) => void;
+  } | null>(null);
   // The confirmed identity being used for workspace creation (set after waitForGeneration resolves)
   const [creatingWithIdentity, setCreatingWithIdentity] = useState<WorkspaceIdentity | null>(null);
   const [runtimeAvailabilityState, setRuntimeAvailabilityState] =
@@ -451,6 +459,24 @@ export function useCreationWorkspace({
           }
         }
 
+        // Gate: untrusted projects must be confirmed before workspace creation
+        if (!getProjectConfig(projectPath)?.trusted) {
+          const userConfirmed = await new Promise<boolean>((resolve) => {
+            setTrustPrompt({ resolve });
+          });
+          if (!userConfirmed) {
+            setToast({
+              id: Date.now().toString(),
+              type: "error",
+              message:
+                "This project must be trusted to create workspaces. Repository scripts (.mux/init, tool hooks, git hooks) require trust to execute.",
+            });
+            setIsSending(false);
+            return { success: false };
+          }
+          // Trust was confirmed and set, continue with creation
+        }
+
         // Create the workspace with the generated name and title
         const createResult = await api.workspace.create({
           projectPath,
@@ -584,6 +610,7 @@ export function useCreationWorkspace({
       isSending,
       projectPath,
       projectScopeId,
+      getProjectConfig,
       onWorkspaceCreated,
       settings.selectedRuntime,
       runtimeAvailabilityState,
@@ -602,6 +629,30 @@ export function useCreationWorkspace({
       providersConfig,
     ]
   );
+
+  const trustDialog =
+    trustPrompt && api
+      ? createElement(ConfirmationModal, {
+          isOpen: true,
+          title: "Trust this project?",
+          description:
+            "Creating a workspace will execute repository scripts. Only trust projects from sources you trust.",
+          warning:
+            "This includes .mux/init, .mux/tool_env, .mux/tool_pre, .mux/tool_post, and git hooks.",
+          confirmLabel: "Trust and continue",
+          cancelLabel: "Don't create",
+          onConfirm: async () => {
+            await api.projects.setTrust({ projectPath, trusted: true });
+            await refreshProjects();
+            trustPrompt.resolve(true);
+            setTrustPrompt(null);
+          },
+          onCancel: () => {
+            trustPrompt.resolve(false);
+            setTrustPrompt(null);
+          },
+        })
+      : null;
 
   return {
     branches,
@@ -626,5 +677,6 @@ export function useCreationWorkspace({
     reloadBranches: loadBranches,
     // Runtime availability state for each mode
     runtimeAvailabilityState,
+    trustDialog,
   };
 }
