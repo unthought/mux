@@ -782,7 +782,8 @@ export class DevcontainerRuntime extends LocalBaseRuntime {
     projectPath: string,
     oldName: string,
     newName: string,
-    _abortSignal?: AbortSignal
+    _abortSignal?: AbortSignal,
+    trusted?: boolean
   ): Promise<
     { success: true; oldPath: string; newPath: string } | { success: false; error: string }
   > {
@@ -791,7 +792,12 @@ export class DevcontainerRuntime extends LocalBaseRuntime {
     await devcontainerDown(oldPath, this.configPath);
 
     // Rename worktree on host
-    const result = await this.worktreeManager.renameWorkspace(projectPath, oldName, newName);
+    const result = await this.worktreeManager.renameWorkspace(
+      projectPath,
+      oldName,
+      newName,
+      trusted
+    );
 
     if (result.success) {
       // Update current workspace path if this was the active workspace
@@ -807,7 +813,8 @@ export class DevcontainerRuntime extends LocalBaseRuntime {
     projectPath: string,
     workspaceName: string,
     force: boolean,
-    _abortSignal?: AbortSignal
+    _abortSignal?: AbortSignal,
+    trusted?: boolean
   ): Promise<{ success: true; deletedPath: string } | { success: false; error: string }> {
     const workspacePath = this.getWorkspacePath(projectPath, workspaceName);
 
@@ -819,7 +826,7 @@ export class DevcontainerRuntime extends LocalBaseRuntime {
     }
 
     // Delete worktree on host
-    return this.worktreeManager.deleteWorkspace(projectPath, workspaceName, force);
+    return this.worktreeManager.deleteWorkspace(projectPath, workspaceName, force, trusted);
   }
 
   async forkWorkspace(params: WorkspaceForkParams): Promise<WorkspaceForkResult> {
