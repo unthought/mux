@@ -3082,7 +3082,9 @@ describe("WorkspaceService fork", () => {
       generateStableId: mock(() => newWorkspaceId),
       findWorkspace: mock(() => null),
       getSessionDir: mock(() => "/tmp/test/sessions"),
-      loadConfigOrDefault: mock(() => ({ projects: new Map() })),
+      loadConfigOrDefault: mock(() => ({
+        projects: new Map([[sourceProjectPath, { workspaces: [], trusted: true }]]),
+      })),
     };
 
     const workspaceService = new WorkspaceService(
