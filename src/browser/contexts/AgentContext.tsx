@@ -288,7 +288,8 @@ function AgentProviderWithState(props: {
             }))
           : optimisticAgents
       );
-      setLoaded(true);
+      // Keep loading state while only display-only fallback data is available.
+      setLoaded(!usingWorkspaceSourcedProjectFallbackForWorkspace);
     } else {
       setAgents([]);
       setLoaded(false);

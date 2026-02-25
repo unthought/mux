@@ -272,7 +272,7 @@ describe("AgentContext", () => {
           ([input]: [AgentsListInput, ...unknown[]]) => input.workspaceId === "ws-b"
         )
       ).toBe(true);
-      expect(contextValue?.loaded).toBe(true);
+      expect(contextValue?.loaded).toBe(false);
       expect(contextValue?.agents.map((agent) => agent.id)).toEqual(["exec"]);
       expect(contextValue?.agents.every((agent) => !agent.uiSelectable)).toBe(true);
     });
