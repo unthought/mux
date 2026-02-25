@@ -130,22 +130,24 @@ export class WorktreeRuntime extends LocalBaseRuntime {
     projectPath: string,
     oldName: string,
     newName: string,
-    _abortSignal?: AbortSignal
+    _abortSignal?: AbortSignal,
+    trusted?: boolean
   ): Promise<
     { success: true; oldPath: string; newPath: string } | { success: false; error: string }
   > {
     // Note: _abortSignal ignored for local operations (fast, no need for cancellation)
-    return this.worktreeManager.renameWorkspace(projectPath, oldName, newName);
+    return this.worktreeManager.renameWorkspace(projectPath, oldName, newName, trusted);
   }
 
   async deleteWorkspace(
     projectPath: string,
     workspaceName: string,
     force: boolean,
-    _abortSignal?: AbortSignal
+    _abortSignal?: AbortSignal,
+    trusted?: boolean
   ): Promise<{ success: true; deletedPath: string } | { success: false; error: string }> {
     // Note: _abortSignal ignored for local operations (fast, no need for cancellation)
-    return this.worktreeManager.deleteWorkspace(projectPath, workspaceName, force);
+    return this.worktreeManager.deleteWorkspace(projectPath, workspaceName, force, trusted);
   }
 
   async forkWorkspace(params: WorkspaceForkParams): Promise<WorkspaceForkResult> {

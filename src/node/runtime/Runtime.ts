@@ -541,7 +541,8 @@ export interface Runtime {
     projectPath: string,
     oldName: string,
     newName: string,
-    abortSignal?: AbortSignal
+    abortSignal?: AbortSignal,
+    trusted?: boolean
   ): Promise<
     { success: true; oldPath: string; newPath: string } | { success: false; error: string }
   >;
@@ -566,7 +567,8 @@ export interface Runtime {
     projectPath: string,
     workspaceName: string,
     force: boolean,
-    abortSignal?: AbortSignal
+    abortSignal?: AbortSignal,
+    trusted?: boolean
   ): Promise<{ success: true; deletedPath: string } | { success: false; error: string }>;
 
   /**

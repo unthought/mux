@@ -7,6 +7,9 @@ export const GIT_NO_HOOKS_ENV = {
   GIT_CONFIG_COUNT: "1",
   GIT_CONFIG_KEY_0: "core.hooksPath",
   GIT_CONFIG_VALUE_0: "/dev/null",
+  // Clear the deprecated GIT_CONFIG_PARAMETERS to prevent it from overriding
+  // the numbered GIT_CONFIG_* variables above (it takes precedence in git).
+  GIT_CONFIG_PARAMETERS: "",
 } as const;
 
 /**

@@ -1937,10 +1937,14 @@ export class WorkspaceService extends EventEmitter {
 
         // Delete workspace from runtime first - if this fails with force=false, we abort
         // and keep workspace in config so user can retry. This prevents orphaned directories.
+        const trusted =
+          this.config.loadConfigOrDefault().projects.get(projectPath)?.trusted ?? false;
         const deleteResult = await runtime.deleteWorkspace(
           projectPath,
           metadata.name, // use branch name
-          force
+          force,
+          undefined, // abortSignal
+          trusted
         );
 
         if (!deleteResult.success) {
@@ -2215,7 +2219,14 @@ export class WorkspaceService extends EventEmitter {
         workspaceName: oldName,
       });
 
-      const renameResult = await runtime.renameWorkspace(projectPath, oldName, newName);
+      const trusted = this.config.loadConfigOrDefault().projects.get(projectPath)?.trusted ?? false;
+      const renameResult = await runtime.renameWorkspace(
+        projectPath,
+        oldName,
+        newName,
+        undefined, // abortSignal
+        trusted
+      );
 
       if (!renameResult.success) {
         return Err(renameResult.error);
@@ -3108,7 +3119,14 @@ export class WorkspaceService extends EventEmitter {
           );
         }
       } catch (copyError) {
-        await targetRuntime.deleteWorkspace(foundProjectPath, resolvedName, true);
+        // trusted flag already retrieved at fork start — reuse via closure
+        await targetRuntime.deleteWorkspace(
+          foundProjectPath,
+          resolvedName,
+          true,
+          undefined,
+          trusted
+        );
         try {
           await fsPromises.rm(newSessionDir, { recursive: true, force: true });
         } catch (cleanupError) {

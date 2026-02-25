@@ -73,7 +73,12 @@ export class WorktreeManager {
 
       // Fetch origin before creating worktree (best-effort)
       // This ensures new branches start from the latest origin state
-      const fetchedOrigin = await this.fetchOriginTrunk(projectPath, trunkBranch, initLogger);
+      const fetchedOrigin = await this.fetchOriginTrunk(
+        projectPath,
+        trunkBranch,
+        initLogger,
+        noHooksEnv
+      );
 
       // Determine best base for new branches: use origin if local can fast-forward to it,
       // otherwise preserve local state (user may have unpushed work)
@@ -107,7 +112,7 @@ export class WorktreeManager {
       // For existing branches, fast-forward to latest origin (best-effort)
       // Only if local can fast-forward (preserves unpushed work)
       if (shouldUseOrigin && branchExists) {
-        await this.fastForwardToOrigin(workspacePath, trunkBranch, initLogger);
+        await this.fastForwardToOrigin(workspacePath, trunkBranch, initLogger, noHooksEnv);
       }
 
       return { success: true, workspacePath };
@@ -126,12 +131,17 @@ export class WorktreeManager {
   private async fetchOriginTrunk(
     projectPath: string,
     trunkBranch: string,
-    initLogger: InitLogger
+    initLogger: InitLogger,
+    noHooksEnv?: { env: Record<string, string> }
   ): Promise<boolean> {
     try {
       initLogger.logStep(`Fetching latest from origin/${trunkBranch}...`);
 
-      using fetchProc = execFileAsync("git", ["-C", projectPath, "fetch", "origin", trunkBranch]);
+      using fetchProc = execFileAsync(
+        "git",
+        ["-C", projectPath, "fetch", "origin", trunkBranch],
+        noHooksEnv
+      );
       await fetchProc.result;
 
       initLogger.logStep("Fetched latest from origin");
@@ -189,18 +199,17 @@ export class WorktreeManager {
   private async fastForwardToOrigin(
     workspacePath: string,
     trunkBranch: string,
-    initLogger: InitLogger
+    initLogger: InitLogger,
+    noHooksEnv?: { env: Record<string, string> }
   ): Promise<void> {
     try {
       initLogger.logStep("Fast-forward merging...");
 
-      using mergeProc = execFileAsync("git", [
-        "-C",
-        workspacePath,
-        "merge",
-        "--ff-only",
-        `origin/${trunkBranch}`,
-      ]);
+      using mergeProc = execFileAsync(
+        "git",
+        ["-C", workspacePath, "merge", "--ff-only", `origin/${trunkBranch}`],
+        noHooksEnv
+      );
       await mergeProc.result;
       initLogger.logStep("Fast-forwarded to latest origin successfully");
     } catch (mergeError) {
@@ -213,12 +222,16 @@ export class WorktreeManager {
   async renameWorkspace(
     projectPath: string,
     oldName: string,
-    newName: string
+    newName: string,
+    trusted?: boolean
   ): Promise<
     { success: true; oldPath: string; newPath: string } | { success: false; error: string }
   > {
     // Clean up stale lock before git operations on main repo
     cleanStaleLock(projectPath);
+
+    // Disable git hooks for untrusted projects
+    const noHooksEnv = trusted ? undefined : { env: GIT_NO_HOOKS_ENV };
 
     // Compute workspace paths using canonical method
     const oldPath = this.getWorkspacePath(projectPath, oldName);
@@ -226,14 +239,11 @@ export class WorktreeManager {
 
     try {
       // Move the worktree directory (updates git's internal worktree metadata)
-      using moveProc = execFileAsync("git", [
-        "-C",
-        projectPath,
-        "worktree",
-        "move",
-        oldPath,
-        newPath,
-      ]);
+      using moveProc = execFileAsync(
+        "git",
+        ["-C", projectPath, "worktree", "move", oldPath, newPath],
+        noHooksEnv
+      );
       await moveProc.result;
 
       // Rename the git branch to match the new workspace name
@@ -241,7 +251,11 @@ export class WorktreeManager {
       // Run from the new worktree path since that's where the branch is checked out.
       // Best-effort: ignore errors (e.g., branch might have a different name in test scenarios).
       try {
-        using branchProc = execFileAsync("git", ["-C", newPath, "branch", "-m", oldName, newName]);
+        using branchProc = execFileAsync(
+          "git",
+          ["-C", newPath, "branch", "-m", oldName, newName],
+          noHooksEnv
+        );
         await branchProc.result;
       } catch {
         // Branch rename failed - this is fine, the directory was still moved
@@ -257,10 +271,14 @@ export class WorktreeManager {
   async deleteWorkspace(
     projectPath: string,
     workspaceName: string,
-    force: boolean
+    force: boolean,
+    trusted?: boolean
   ): Promise<{ success: true; deletedPath: string } | { success: false; error: string }> {
     // Clean up stale lock before git operations on main repo
     cleanStaleLock(projectPath);
+
+    // Disable git hooks for untrusted projects
+    const noHooksEnv = trusted ? undefined : { env: GIT_NO_HOOKS_ENV };
 
     // In-place workspaces are identified by projectPath === workspaceName
     // These are direct workspace directories (e.g., CLI/benchmark sessions), not git worktrees
@@ -317,12 +335,11 @@ export class WorktreeManager {
 
       // If origin/HEAD points at a local branch, also treat it as protected.
       try {
-        using originHeadProc = execFileAsync("git", [
-          "-C",
-          projectPath,
-          "symbolic-ref",
-          "refs/remotes/origin/HEAD",
-        ]);
+        using originHeadProc = execFileAsync(
+          "git",
+          ["-C", projectPath, "symbolic-ref", "refs/remotes/origin/HEAD"],
+          noHooksEnv
+        );
         const { stdout } = await originHeadProc.result;
         const ref = stdout.trim();
         const prefix = "refs/remotes/origin/";
@@ -343,13 +360,11 @@ export class WorktreeManager {
 
       // Extra safety: don't delete a branch still checked out by any worktree.
       try {
-        using worktreeProc = execFileAsync("git", [
-          "-C",
-          projectPath,
-          "worktree",
-          "list",
-          "--porcelain",
-        ]);
+        using worktreeProc = execFileAsync(
+          "git",
+          ["-C", projectPath, "worktree", "list", "--porcelain"],
+          noHooksEnv
+        );
         const { stdout } = await worktreeProc.result;
         const needle = `branch refs/heads/${branchToDelete}`;
         const isCheckedOut = stdout.split("\n").some((line) => line.trim() === needle);
@@ -371,13 +386,11 @@ export class WorktreeManager {
 
       const deleteFlag = force ? "-D" : "-d";
       try {
-        using deleteProc = execFileAsync("git", [
-          "-C",
-          projectPath,
-          "branch",
-          deleteFlag,
-          branchToDelete,
-        ]);
+        using deleteProc = execFileAsync(
+          "git",
+          ["-C", projectPath, "branch", deleteFlag, branchToDelete],
+          noHooksEnv
+        );
         await deleteProc.result;
       } catch (error) {
         // Best-effort: workspace deletion should not fail just because branch cleanup failed.
@@ -400,7 +413,11 @@ export class WorktreeManager {
       // For standard worktrees, prune stale git records (best effort)
       if (!isInPlace) {
         try {
-          using pruneProc = execFileAsync("git", ["-C", projectPath, "worktree", "prune"]);
+          using pruneProc = execFileAsync(
+            "git",
+            ["-C", projectPath, "worktree", "prune"],
+            noHooksEnv
+          );
           await pruneProc.result;
         } catch {
           // Ignore prune errors - directory is already deleted, which is the goal
@@ -428,7 +445,7 @@ export class WorktreeManager {
         removeArgs.push("--force");
       }
       removeArgs.push(deletedPath);
-      using proc = execFileAsync("git", removeArgs);
+      using proc = execFileAsync("git", removeArgs, noHooksEnv);
       await proc.result;
 
       // Best-effort: also delete the local branch.
@@ -447,7 +464,11 @@ export class WorktreeManager {
       if (looksLikeMissingWorktree) {
         // Worktree records are stale - prune them
         try {
-          using pruneProc = execFileAsync("git", ["-C", projectPath, "worktree", "prune"]);
+          using pruneProc = execFileAsync(
+            "git",
+            ["-C", projectPath, "worktree", "prune"],
+            noHooksEnv
+          );
           await pruneProc.result;
         } catch {
           // Ignore prune errors
@@ -463,7 +484,11 @@ export class WorktreeManager {
         try {
           // Prune git's worktree records first (best effort)
           try {
-            using pruneProc = execFileAsync("git", ["-C", projectPath, "worktree", "prune"]);
+            using pruneProc = execFileAsync(
+              "git",
+              ["-C", projectPath, "worktree", "prune"],
+              noHooksEnv
+            );
             await pruneProc.result;
           } catch {
             // Ignore prune errors - we'll still try rm -rf
