@@ -1,5 +1,4 @@
 import type { APIClient } from "@/browser/contexts/API";
-import { ProjectProvider } from "@/browser/contexts/ProjectContext";
 import type { DraftWorkspaceSettings } from "@/browser/hooks/useDraftWorkspaceSettings";
 import type { ProjectConfig } from "@/common/types/project";
 import {
@@ -147,6 +146,41 @@ void mock.module("@/browser/contexts/API", () => ({
   },
 }));
 
+// Synchronous mock for useProjectContext — eliminates the async race from
+// ProjectProvider's useEffect → refreshProjects() that caused CI-only hangs.
+// Tests that need untrusted projects set mockProjectConfigMap directly.
+let mockProjectConfigMap = new Map<string, ProjectConfig>();
+
+void mock.module("@/browser/contexts/ProjectContext", () => ({
+  useProjectContext: () => ({
+    loading: false,
+    getProjectConfig: (path: string) => mockProjectConfigMap.get(path),
+    refreshProjects: mock(() => Promise.resolve()),
+    userProjects: mockProjectConfigMap,
+    hasAnyProject: mockProjectConfigMap.size > 0,
+    systemProjectPath: null,
+    resolveProjectPath: () => null,
+    addProject: noop,
+    removeProject: mock(() => Promise.resolve({ success: true })),
+    isProjectCreateModalOpen: false,
+    openProjectCreateModal: noop,
+    closeProjectCreateModal: noop,
+    workspaceModalState: { isOpen: false },
+    openWorkspaceModal: mock(() => Promise.resolve()),
+    closeWorkspaceModal: noop,
+    getBranchesForProject: mock(() => Promise.resolve({ branches: [], recommendedTrunk: null })),
+    getSecrets: mock(() => Promise.resolve([])),
+    updateSecrets: mock(() => Promise.resolve()),
+    createSection: mock(() => Promise.resolve({ success: true })),
+    updateSection: mock(() => Promise.resolve({ success: true })),
+    removeSection: mock(() => Promise.resolve({ success: true })),
+    reorderSections: mock(() => Promise.resolve({ success: true })),
+    assignWorkspaceToSection: mock(() => Promise.resolve({ success: true })),
+    resolveNewChatProjectPath: () => null,
+  }),
+  ProjectProvider: (props: Record<string, unknown>) => props.children,
+}));
+
 const TEST_PROJECT_PATH = "/projects/demo";
 const FALLBACK_BRANCH = "main";
 const TEST_WORKSPACE_ID = "ws-created";
@@ -167,7 +201,7 @@ type NameGenerationArgs = Parameters<APIClient["nameGeneration"]["generate"]>[0]
 type NameGenerationResult = Awaited<ReturnType<APIClient["nameGeneration"]["generate"]>>;
 type MockOrpcProjectsClient = Pick<
   APIClient["projects"],
-  "list" | "listBranches" | "runtimeAvailability"
+  "list" | "listBranches" | "runtimeAvailability" | "setTrust"
 >;
 type MockOrpcWorkspaceClient = Pick<
   APIClient["workspace"],
@@ -219,6 +253,12 @@ const setupWindow = ({
   updateAgentAISettings,
   nameGeneration,
 }: SetupWindowOptions = {}) => {
+  // Sync the useProjectContext mock with the default trusted config.
+  // Tests that need untrusted projects override mockProjectConfigMap directly.
+  if (!listProjects && mockProjectConfigMap.get(TEST_PROJECT_PATH)?.trusted !== false) {
+    mockProjectConfigMap = new Map([[TEST_PROJECT_PATH, { workspaces: [], trusted: true }]]);
+  }
+
   const listProjectsMock =
     listProjects ??
     mock<() => Promise<ProjectListResult>>(() => {
@@ -295,6 +335,7 @@ const setupWindow = ({
           docker: { available: true },
           devcontainer: { available: false, reason: "No devcontainer.json found" },
         }),
+      setTrust: mock(() => Promise.resolve()),
     },
     workspace: {
       sendMessage: (input: WorkspaceSendMessageArgs) => sendMessageMock(input),
@@ -423,6 +464,7 @@ const TEST_METADATA: FrontendWorkspaceMetadata = {
 
 describe("useCreationWorkspace", () => {
   beforeEach(() => {
+    mockProjectConfigMap = new Map([[TEST_PROJECT_PATH, { workspaces: [], trusted: true }]]);
     persistedPreferences = {};
     readPersistedStateCalls.length = 0;
     updatePersistedStateCalls.length = 0;
@@ -598,13 +640,7 @@ describe("useCreationWorkspace", () => {
   });
 
   test("handleSend shows trust dialog for untrusted projects", async () => {
-    const listProjectsMock = mock<() => Promise<ProjectListResult>>(() => {
-      const untrustedProjectConfig: ProjectConfig = {
-        workspaces: [],
-        trusted: false,
-      };
-      return Promise.resolve([[TEST_PROJECT_PATH, untrustedProjectConfig]]);
-    });
+    mockProjectConfigMap = new Map([[TEST_PROJECT_PATH, { workspaces: [], trusted: false }]]);
     const nameGenerationMock = mock(
       (_args: NameGenerationArgs): Promise<NameGenerationResult> =>
         Promise.resolve({
@@ -613,7 +649,6 @@ describe("useCreationWorkspace", () => {
         } as NameGenerationResult)
     );
     const { workspaceApi, nameGenerationApi } = setupWindow({
-      listProjects: listProjectsMock,
       nameGeneration: nameGenerationMock,
     });
 
@@ -1035,11 +1070,7 @@ function renderUseCreationWorkspace(options: HookOptions) {
     return null;
   }
 
-  render(
-    <ProjectProvider>
-      <Harness {...options} />
-    </ProjectProvider>
-  );
+  render(<Harness {...options} />);
 
   return () => {
     if (!resultRef.current) {
