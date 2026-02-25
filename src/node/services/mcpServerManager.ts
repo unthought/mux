@@ -230,27 +230,17 @@ async function probeWwwAuthenticateHeader(url: string): Promise<string | null> {
   const timeout = setTimeout(() => abortController.abort(), 3_000);
 
   try {
-    // Some servers (e.g. Figma) return 405 on GET for HTTP-transport endpoints,
-    // so we try POST as a fallback to surface the WWW-Authenticate header.
-    for (const method of ["GET", "POST"] as const) {
-      try {
-        const response = await fetch(url, {
-          method,
-          headers: {
-            Accept: "text/event-stream",
-          },
-          redirect: "manual",
-          signal: abortController.signal,
-        });
+    const response = await fetch(url, {
+      method: "GET",
+      headers: {
+        Accept: "text/event-stream",
+      },
+      redirect: "manual",
+      signal: abortController.signal,
+    });
 
-        const header = response.headers.get("www-authenticate");
-        if (header) {
-          return header;
-        }
-      } catch {
-        // Continue to next method.
-      }
-    }
+    return response.headers.get("www-authenticate");
+  } catch {
     return null;
   } finally {
     clearTimeout(timeout);
@@ -272,15 +262,11 @@ async function extractBearerOauthChallenge(options: {
   }
 
   if (!header) {
-    // Surface OAuth callout for 401/403 even when headers aren't extractable.
-    // The OAuth login flow discovers endpoints independently via .well-known.
-    return {};
+    return null;
   }
 
   const challenge = parseBearerWwwAuthenticate(header);
   if (!challenge) {
-    // Header exists but isn't a Bearer challenge (e.g., Basic auth) —
-    // don't surface the OAuth callout, the server uses a different auth scheme.
     return null;
   }
 

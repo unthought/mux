@@ -258,20 +258,57 @@ function getMCPOAuthLoginFlowMode(input: {
   return hasServerFlowFns ? "server" : null;
 }
 
+function isFigmaRemoteMcpServer(serverUrl?: string): boolean {
+  if (!serverUrl) {
+    return false;
+  }
+
+  try {
+    const url = new URL(serverUrl);
+    return url.hostname === "mcp.figma.com";
+  } catch {
+    return false;
+  }
+}
+
+function formatMCPOAuthLoginError(input: { error: string; serverUrl?: string }): string {
+  const { error, serverUrl } = input;
+
+  // Figma's remote MCP server requires pre-approved OAuth clients. When registration is
+  // blocked, the OAuth SDK surfaces a plain-text 403 "Forbidden" as an invalid OAuth error.
+  // Provide actionable guidance instead of the raw error to improve UX.
+  if (
+    isFigmaRemoteMcpServer(serverUrl) &&
+    /HTTP 403/i.test(error) &&
+    /Forbidden/i.test(error) &&
+    /Invalid OAuth error response/i.test(error)
+  ) {
+    return (
+      "Figma's remote MCP server rejected OAuth client registration (HTTP 403 Forbidden). " +
+      "Remote access requires an approved client. Apply for access in Figma's MCP catalog " +
+      "or use the Figma desktop MCP server instead."
+    );
+  }
+
+  return error;
+}
+
 function useMCPOAuthLogin(input: {
   api: ReturnType<typeof useAPI>["api"];
   isDesktop: boolean;
   serverName: string;
+  serverUrl?: string;
   pendingServer?: MCPOAuthPendingServerConfig;
   onSuccess?: () => void | Promise<void>;
 }) {
-  const { api, isDesktop, serverName, pendingServer, onSuccess } = input;
+  const { api, isDesktop, serverName, serverUrl, pendingServer, onSuccess } = input;
   const loginAttemptRef = useRef(0);
   const [flowId, setFlowId] = useState<string | null>(null);
 
   const [loginStatus, setLoginStatus] = useState<MCPOAuthLoginStatus>("idle");
   const [loginError, setLoginError] = useState<string | null>(null);
 
+  const resolvedServerUrl = pendingServer?.url ?? serverUrl;
   const loginInProgress = loginStatus === "starting" || loginStatus === "waiting";
 
   const cancelLogin = useCallback(() => {
@@ -352,7 +389,9 @@ function useMCPOAuthLogin(input: {
 
       if (!startResult.success) {
         setLoginStatus("error");
-        setLoginError(startResult.error);
+        setLoginError(
+          formatMCPOAuthLoginError({ error: startResult.error, serverUrl: resolvedServerUrl })
+        );
         return;
       }
 
@@ -393,7 +432,9 @@ function useMCPOAuthLogin(input: {
       }
 
       setLoginStatus("error");
-      setLoginError(waitResult.error);
+      setLoginError(
+        formatMCPOAuthLoginError({ error: waitResult.error, serverUrl: resolvedServerUrl })
+      );
     } catch (err) {
       if (attempt !== loginAttemptRef.current) {
         return;
@@ -401,9 +442,9 @@ function useMCPOAuthLogin(input: {
 
       const message = getErrorMessage(err);
       setLoginStatus("error");
-      setLoginError(message);
+      setLoginError(formatMCPOAuthLoginError({ error: message, serverUrl: resolvedServerUrl }));
     }
-  }, [api, isDesktop, onSuccess, pendingServer, serverName]);
+  }, [api, isDesktop, onSuccess, pendingServer, resolvedServerUrl, serverName]);
 
   return {
     loginStatus,
@@ -416,10 +457,11 @@ function useMCPOAuthLogin(input: {
 
 const MCPOAuthRequiredCallout: React.FC<{
   serverName: string;
+  serverUrl?: string;
   pendingServer?: MCPOAuthPendingServerConfig;
   disabledReason?: string;
   onLoginSuccess?: () => void | Promise<void>;
-}> = ({ serverName, pendingServer, disabledReason, onLoginSuccess }) => {
+}> = ({ serverName, serverUrl, pendingServer, disabledReason, onLoginSuccess }) => {
   const { api } = useAPI();
   const isDesktop = !!window.api;
 
@@ -427,6 +469,7 @@ const MCPOAuthRequiredCallout: React.FC<{
     api,
     isDesktop,
     serverName,
+    serverUrl,
     pendingServer,
     onSuccess: onLoginSuccess,
   });
@@ -1374,6 +1417,7 @@ export const MCPSettingsSection: React.FC = () => {
                             <div className="mt-2">
                               <MCPOAuthRequiredCallout
                                 serverName={name}
+                                serverUrl={remoteEntry?.url}
                                 disabledReason={
                                   remoteEntry
                                     ? undefined
@@ -1531,6 +1575,7 @@ export const MCPSettingsSection: React.FC = () => {
                     <div className="mt-2">
                       <MCPOAuthRequiredCallout
                         serverName={newServer.name.trim()}
+                        serverUrl={newServer.value.trim() || undefined}
                         pendingServer={(() => {
                           const pendingName = newServer.name.trim();
                           if (!pendingName) {
