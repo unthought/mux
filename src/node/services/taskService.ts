@@ -92,6 +92,8 @@ export interface TaskCreateArgs {
     programmaticToolCallingExclusive?: boolean;
     execSubagentHardRestart?: boolean;
   };
+  /** Whether the parent should block while this task is active. Defaults to "blocking". */
+  taskAwaitPolicy?: "blocking" | "background";
 }
 
 export interface TaskCreateResult {
@@ -960,6 +962,7 @@ export class TaskService {
           taskModelString,
           taskThinkingLevel: effectiveThinkingLevel,
           taskExperiments: args.experiments,
+          taskAwaitPolicy: args.taskAwaitPolicy,
         });
         return config;
       });
@@ -1053,6 +1056,7 @@ export class TaskService {
         taskModelString,
         taskThinkingLevel: effectiveThinkingLevel,
         taskExperiments: args.experiments,
+        taskAwaitPolicy: args.taskAwaitPolicy,
       });
       return config;
     });
@@ -1695,6 +1699,46 @@ export class TaskService {
     return result;
   }
 
+  /**
+   * Whether this task workspace requires its parent to block (nudge on stream-end).
+   * Missing policy defaults to "blocking" for backward compatibility with existing tasks.
+   */
+  private isBlockingTask(entry: { taskAwaitPolicy?: string }): boolean {
+    return (entry.taskAwaitPolicy ?? "blocking") === "blocking";
+  }
+
+  /**
+   * Like listActiveDescendantAgentTaskIds, but only returns descendants with
+   * blocking await policy (i.e., those that should trigger parent auto-resume nudges).
+   */
+  listActiveBlockingDescendantTaskIds(workspaceId: string): string[] {
+    assert(
+      workspaceId.length > 0,
+      "listActiveBlockingDescendantTaskIds: workspaceId must be non-empty"
+    );
+
+    const cfg = this.config.loadConfigOrDefault();
+    const index = this.buildAgentTaskIndex(cfg);
+
+    const activeStatuses = new Set<AgentTaskStatus>(["queued", "running", "awaiting_report"]);
+    const result: string[] = [];
+    const stack: string[] = [...(index.childrenByParent.get(workspaceId) ?? [])];
+    while (stack.length > 0) {
+      const next = stack.pop()!;
+      const entry = index.byId.get(next);
+      const status = entry?.taskStatus;
+      if (status && activeStatuses.has(status) && this.isBlockingTask(entry)) {
+        result.push(next);
+      }
+      const children = index.childrenByParent.get(next);
+      if (children) {
+        for (const child of children) {
+          stack.push(child);
+        }
+      }
+    }
+    return result;
+  }
   listDescendantAgentTasks(
     workspaceId: string,
     options?: { statuses?: AgentTaskStatus[] }
@@ -2534,7 +2578,17 @@ export class TaskService {
         return;
       }
 
-      const activeTaskIds = this.listActiveDescendantAgentTaskIds(workspaceId);
+      // Use the persisted taskAwaitPolicy to determine which descendants require
+      // the parent to stay active. Background tasks (explicitly spawned with
+      // run_in_background=true) are excluded — the tasks-completed resume path
+      // (deliverReportToParent) will nudge the parent when they finish.
+      const blockingTaskIds = this.listActiveBlockingDescendantTaskIds(workspaceId);
+      if (blockingTaskIds.length === 0) {
+        log.debug("Skipping parent auto-resume: no active blocking descendants (background-only)", {
+          workspaceId,
+        });
+        return;
+      }
 
       // Check for auto-resume flood protection
       const resumeCount = this.consecutiveAutoResumes.get(workspaceId) ?? 0;
@@ -2542,7 +2596,7 @@ export class TaskService {
         log.warn("Auto-resume limit reached for parent workspace with active descendants", {
           workspaceId,
           resumeCount,
-          activeTaskIds,
+          activeTaskIds: blockingTaskIds,
           limit: MAX_CONSECUTIVE_PARENT_AUTO_RESUMES,
         });
         return;
@@ -2558,7 +2612,7 @@ export class TaskService {
 
       const sendResult = await this.workspaceService.sendMessage(
         workspaceId,
-        `You have active background sub-agent task(s) (${activeTaskIds.join(", ")}). ` +
+        `You have active background sub-agent task(s) (${blockingTaskIds.join(", ")}). ` +
           "You MUST NOT end your turn while any sub-agent tasks are queued/running/awaiting_report. " +
           "Call task_await now to wait for them to finish (omit timeout_secs to wait up to 10 minutes). " +
           "If any tasks are still queued/running/awaiting_report after that, call task_await again. " +

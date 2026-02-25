@@ -70,6 +70,10 @@ export const WorkspaceMetadataSchema = z.object({
     description:
       "Trunk branch used to create/init this agent task workspace (used for restart-safe init on queued tasks).",
   }),
+  taskAwaitPolicy: z
+    .enum(["blocking", "background"])
+    .optional()
+    .meta({ description: "Whether the parent should block (nudge) while this task is active." }),
   archivedAt: z.string().optional().meta({
     description:
       "ISO 8601 timestamp when workspace was last archived. Workspace is considered archived if archivedAt > unarchivedAt (or unarchivedAt is absent).",
