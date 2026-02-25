@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { ShieldCheck, ShieldOff } from "lucide-react";
 import { Button } from "@/browser/components/ui/button";
 import { useProjectContext } from "@/browser/contexts/ProjectContext";
@@ -13,9 +13,11 @@ export function SecuritySection() {
   const { api } = useAPI();
   const { userProjects, refreshProjects } = useProjectContext();
   const [pendingPath, setPendingPath] = useState<string | null>(null);
+  const pendingRef = useRef(false);
 
   const handleToggleTrust = async (projectPath: string, currentlyTrusted: boolean) => {
-    if (!api || pendingPath != null) return;
+    if (!api || pendingRef.current) return;
+    pendingRef.current = true;
     try {
       setPendingPath(projectPath);
       await api.projects.setTrust({ projectPath, trusted: !currentlyTrusted });
@@ -23,6 +25,7 @@ export function SecuritySection() {
     } catch {
       // Best-effort — config refresh will reflect actual state
     } finally {
+      pendingRef.current = false;
       setPendingPath(null);
     }
   };
