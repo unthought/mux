@@ -7,6 +7,10 @@
  * - CLI bootstrap: buildProvidersFromEnv() to create initial providers.jsonc
  */
 
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+
 import { PROVIDER_DEFINITIONS, type ProviderName } from "@/common/constants/providers";
 import type { ProviderConfig, ProvidersConfig } from "@/node/config";
 import { parseCodexOauthAuth } from "@/node/utils/codexOauthAuth";
@@ -85,6 +89,7 @@ function resolveEnv(
 /** Raw provider config shape (subset of providers.jsonc entry) */
 export interface ProviderConfigRaw {
   apiKey?: string;
+  apiKeyFile?: string;
   baseUrl?: string;
   baseURL?: string; // Anthropic uses baseURL
   models?: unknown[];
@@ -113,6 +118,24 @@ export interface ResolvedCredentials {
 
 /** Legacy alias for backward compatibility */
 export type ProviderConfigCheck = Pick<ResolvedCredentials, "isConfigured" | "missingRequirement">;
+
+/**
+ * Read an API key from a file path. Supports ~ for home directory.
+ * Returns null if the file doesn't exist or is empty.
+ */
+function resolveApiKeyFile(filePath: string | undefined): string | null {
+  if (!filePath) return null;
+
+  // Expand ~ to home directory
+  const expanded = filePath.startsWith("~") ? path.join(os.homedir(), filePath.slice(1)) : filePath;
+
+  try {
+    const content = fs.readFileSync(expanded, "utf-8").trim();
+    return content || null;
+  } catch {
+    return null;
+  }
+}
 
 // ============================================================================
 // Credential resolution
@@ -155,11 +178,12 @@ export function resolveProviderCredentials(
     return { isConfigured: hasExplicitConfig };
   }
 
-  // Standard API key providers: check config first, then env vars
+  // Standard API key providers: check config first, then apiKeyFile, then env vars
   const envMapping = PROVIDER_ENV_VARS[provider];
   // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing -- empty string should be treated as unset
   const configKey = config.apiKey || null;
-  const apiKey = configKey ?? resolveEnv(envMapping?.apiKey, env);
+  const fileKey = configKey ? null : resolveApiKeyFile(config.apiKeyFile);
+  const apiKey = configKey ?? fileKey ?? resolveEnv(envMapping?.apiKey, env);
   const baseUrl = config.baseURL ?? config.baseUrl ?? resolveEnv(envMapping?.baseUrl, env);
   // Config organization takes precedence over env var (user's explicit choice)
   const organization = config.organization ?? resolveEnv(envMapping?.organization, env);

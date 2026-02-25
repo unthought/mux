@@ -34,6 +34,7 @@ export type { Workspace, ProjectConfig, ProjectsConfig };
 
 export interface ProviderConfig {
   apiKey?: string;
+  apiKeyFile?: string;
   baseUrl?: string;
   baseURL?: string;
   headers?: Record<string, string>;
