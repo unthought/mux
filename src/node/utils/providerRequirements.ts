@@ -129,7 +129,7 @@ export type ProviderConfigCheck = Pick<
  * Returns null if the file doesn't exist or is empty.
  */
 function resolveApiKeyFile(filePath: string | undefined): string | null {
-  if (!filePath) return null;
+  if (typeof filePath !== "string" || !filePath) return null;
 
   // Expand ~ to home directory
   const expanded = filePath.startsWith("~") ? path.join(os.homedir(), filePath.slice(1)) : filePath;
