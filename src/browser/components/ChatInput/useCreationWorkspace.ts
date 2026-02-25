@@ -659,7 +659,9 @@ export function useCreationWorkspace({
             // so a transient failure doesn't block workspace creation.
             trustPrompt.resolve(true);
             setTrustPrompt(null);
-            refreshProjects().catch(() => {});
+            refreshProjects().catch(() => {
+              // best-effort — trust was already persisted
+            });
           } catch {
             // Trust API failed — abort creation and notify user
             trustPrompt.resolve(false);
