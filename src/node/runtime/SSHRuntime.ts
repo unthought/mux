@@ -1206,12 +1206,16 @@ export class SSHRuntime extends RemoteRuntime {
     projectPath: string,
     workspaceName: string,
     force: boolean,
-    abortSignal?: AbortSignal
+    abortSignal?: AbortSignal,
+    trusted?: boolean
   ): Promise<{ success: true; deletedPath: string } | { success: false; error: string }> {
     // Check if already aborted
     if (abortSignal?.aborted) {
       return { success: false, error: "Delete operation aborted" };
     }
+
+    // Disable git hooks for untrusted projects
+    const nhp = gitNoHooksPrefix(trusted);
 
     // Compute workspace path using canonical method
     const deletedPath = this.getWorkspacePath(projectPath, workspaceName);
@@ -1248,7 +1252,8 @@ export class SSHRuntime extends RemoteRuntime {
                 # Check for squash-merge: if all changed files match origin/$DEFAULT, content is merged
                 if [ -n "$DEFAULT" ]; then
                   # Fetch latest to ensure we have current remote state
-                  git fetch origin "$DEFAULT" --quiet 2>/dev/null || true
+                  # nhp disables git hooks for untrusted projects (reference-transaction, etc.)
+                  ${nhp}git fetch origin "$DEFAULT" --quiet 2>/dev/null || true
 
                   # Get merge-base between current branch and default
                   MERGE_BASE=$(git merge-base "origin/$DEFAULT" HEAD 2>/dev/null)
@@ -1353,8 +1358,8 @@ export class SSHRuntime extends RemoteRuntime {
         // Worktree: use `git worktree remove` to clean up the base repo's worktree metadata.
         const baseRepoPathArg = expandTildeForSSH(this.getBaseRepoPath(projectPath));
         const removeCmd = force
-          ? `git -C ${baseRepoPathArg} worktree remove --force ${this.quoteForRemote(deletedPath)}`
-          : `git -C ${baseRepoPathArg} worktree remove ${this.quoteForRemote(deletedPath)}`;
+          ? `${nhp}git -C ${baseRepoPathArg} worktree remove --force ${this.quoteForRemote(deletedPath)}`
+          : `${nhp}git -C ${baseRepoPathArg} worktree remove ${this.quoteForRemote(deletedPath)}`;
         const stream = await this.exec(removeCmd, {
           cwd: this.config.srcBaseDir,
           timeout: 30,
@@ -1372,7 +1377,7 @@ export class SSHRuntime extends RemoteRuntime {
             // `worktree prune` is best-effort: if the base repo was externally
             // deleted/corrupted the prune fails, but the workspace IS gone after
             // rm -rf — don't report failure for a cosmetic prune error.
-            `rm -rf ${this.quoteForRemote(deletedPath)} && (git -C ${baseRepoPathArg} worktree prune 2>/dev/null || true)`,
+            `rm -rf ${this.quoteForRemote(deletedPath)} && (${nhp}git -C ${baseRepoPathArg} worktree prune 2>/dev/null || true)`,
             { cwd: this.config.srcBaseDir, timeout: 30, abortSignal }
           );
           await fallbackStream.stdin.abort();
@@ -1393,7 +1398,7 @@ export class SSHRuntime extends RemoteRuntime {
         if (!PROTECTED_BRANCHES.includes(workspaceName)) {
           await execBuffered(
             this,
-            `git -C ${baseRepoPathArg} branch -D ${shescape.quote(workspaceName)} 2>/dev/null || true`,
+            `${nhp}git -C ${baseRepoPathArg} branch -D ${shescape.quote(workspaceName)} 2>/dev/null || true`,
             { cwd: "/tmp", timeout: 10 }
           ).catch(() => undefined);
         }
