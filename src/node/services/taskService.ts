@@ -2153,7 +2153,9 @@ export class TaskService {
           allowCreateFallback: true,
           preferredTrunkBranch: trunkBranch,
           trusted:
-            this.config.loadConfigOrDefault().projects.get(taskEntry.projectPath)?.trusted ?? false,
+            this.config
+              .loadConfigOrDefault()
+              .projects.get(stripTrailingSlashes(taskEntry.projectPath))?.trusted ?? false,
         });
 
         if (
@@ -2280,8 +2282,9 @@ export class TaskService {
             env: secrets,
             skipInitHook,
             trusted:
-              this.config.loadConfigOrDefault().projects.get(taskEntry.projectPath)?.trusted ??
-              false,
+              this.config
+                .loadConfigOrDefault()
+                .projects.get(stripTrailingSlashes(taskEntry.projectPath))?.trusted ?? false,
           },
           taskId
         );
