@@ -655,9 +655,11 @@ export function useCreationWorkspace({
           try {
             if (!api) throw new Error("API not available");
             await api.projects.setTrust({ projectPath, trusted: true });
-            await refreshProjects();
+            // Trust persisted — resolve immediately. Refresh is best-effort
+            // so a transient failure doesn't block workspace creation.
             trustPrompt.resolve(true);
             setTrustPrompt(null);
+            refreshProjects().catch(() => {});
           } catch {
             // Trust API failed — abort creation and notify user
             trustPrompt.resolve(false);
