@@ -510,6 +510,9 @@ async function main(): Promise<number> {
       // Fallback to main
     }
 
+    // Read trust state from real config so trusted projects can run hooks
+    const trusted = realConfig.loadConfigOrDefault().projects.get(projectDir)?.trusted ?? false;
+
     const initLogger = makeCliInitLogger(writeHumanLine);
     const createResult = await runtime.createWorkspace({
       projectPath: projectDir,
@@ -517,6 +520,7 @@ async function main(): Promise<number> {
       trunkBranch,
       directoryName: branchName,
       initLogger,
+      trusted,
     });
     if (!createResult.success) {
       console.error(`Failed to create Docker workspace: ${createResult.error ?? "unknown error"}`);
@@ -532,6 +536,7 @@ async function main(): Promise<number> {
         trunkBranch,
         workspacePath: createResult.workspacePath!,
         initLogger,
+        trusted,
       });
     } catch (error) {
       const errorMessage = getErrorMessage(error);
