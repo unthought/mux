@@ -4,6 +4,7 @@ import { EventEmitter } from "events";
 import { type LanguageModel, type Tool } from "ai";
 
 import { linkAbortSignal } from "@/node/utils/abort";
+import { stripTrailingSlashes } from "@/node/utils/pathUtils";
 import type { Result } from "@/common/types/result";
 import { Ok, Err } from "@/common/types/result";
 import type { WorkspaceMetadata } from "@/common/types/workspace";
@@ -886,7 +887,9 @@ export class AIService extends EventEmitter {
           availableSkills,
           // Trust gating: only run hooks/scripts for explicitly trusted projects
           trusted:
-            this.config.loadConfigOrDefault().projects.get(metadata.projectPath)?.trusted ?? false,
+            this.config
+              .loadConfigOrDefault()
+              .projects.get(stripTrailingSlashes(metadata.projectPath))?.trusted ?? false,
         },
         workspaceId,
         this.initStateManager,

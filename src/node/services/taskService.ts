@@ -995,7 +995,8 @@ export class TaskService {
       sourceRuntimeConfig: parentRuntimeConfig,
       allowCreateFallback: true,
       trusted:
-        this.config.loadConfigOrDefault().projects.get(parentMeta.projectPath)?.trusted ?? false,
+        this.config.loadConfigOrDefault().projects.get(stripTrailingSlashes(parentMeta.projectPath))
+          ?.trusted ?? false,
     });
 
     if (forkResult.success && forkResult.data.sourceRuntimeConfigUpdate) {
