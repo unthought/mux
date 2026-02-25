@@ -612,6 +612,7 @@ const RemoteMCPOAuthSection: React.FC<{
     api,
     isDesktop,
     serverName,
+    serverUrl: url,
     onSuccess: refreshAuthStatus,
   });
 
