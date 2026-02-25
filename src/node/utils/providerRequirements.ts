@@ -137,7 +137,7 @@ function resolveApiKeyFile(filePath: string | undefined): string | null {
   try {
     // Guard against non-regular files (FIFOs, devices) that could block indefinitely
     const stat = fs.statSync(expanded);
-    if (!stat.isFile() || stat.size > 4096) return null;
+    if (!stat.isFile() || stat.size > 65536) return null;
     const content = fs.readFileSync(expanded, "utf-8").trim();
     return content || null;
   } catch {
