@@ -44,7 +44,7 @@ export function SecuritySection() {
         <div className="flex flex-col gap-2">
           {projectEntries.map(([path, config]) => {
             const trusted = config.trusted === true;
-            const name = path.split(/[\/\\]/).pop() ?? path;
+            const name = path.split(/[/\\]/).pop() ?? path;
             return (
               <div
                 key={path}
