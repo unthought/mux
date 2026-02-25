@@ -3348,15 +3348,18 @@ export class WorkspaceService extends EventEmitter {
           }
         }
 
+        session.queueMessage(message, normalizedOptions, {
+          synthetic: internal?.synthetic,
+        });
+
         // Background any foreground task waits so the queued message can dispatch promptly.
+        // This must happen after queueMessage succeeds — if enqueue fails (throws),
+        // we must not cancel foreground waits.
         const queueDispatchMode = normalizedOptions?.queueDispatchMode ?? "tool-end";
         if (queueDispatchMode === "tool-end") {
           this.taskService?.backgroundForegroundWaitsForWorkspace(workspaceId);
         }
 
-        session.queueMessage(message, normalizedOptions, {
-          synthetic: internal?.synthetic,
-        });
         return Ok(undefined);
       }
 
