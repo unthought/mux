@@ -228,7 +228,7 @@ export function useCreationWorkspace({
   // Keep router state fresh synchronously so auto-navigation checks don't lag behind route changes.
   latestRouteRef.current = { currentWorkspaceId, currentProjectId, pendingDraftId };
   const { api } = useAPI();
-  const { getProjectConfig, refreshProjects } = useProjectContext();
+  const { getProjectConfig, refreshProjects, loading: projectsLoading } = useProjectContext();
   const { config: providersConfig } = useProvidersConfig();
   const [branches, setBranches] = useState<string[]>([]);
   const [branchesLoaded, setBranchesLoaded] = useState(false);
@@ -468,8 +468,9 @@ export function useCreationWorkspace({
           }
         }
 
-        // Gate: untrusted projects must be confirmed before workspace creation
-        if (!getProjectConfig(projectPath)?.trusted) {
+        // Gate: untrusted projects must be confirmed before workspace creation.
+        // Skip while projects are still loading — the backend gate catches untrusted projects.
+        if (!projectsLoading && !getProjectConfig(projectPath)?.trusted) {
           const userConfirmed = await new Promise<boolean>((resolve) => {
             setTrustPrompt({ resolve });
           });
@@ -620,6 +621,7 @@ export function useCreationWorkspace({
       projectPath,
       projectScopeId,
       getProjectConfig,
+      projectsLoading,
       onWorkspaceCreated,
       settings.selectedRuntime,
       runtimeAvailabilityState,
