@@ -135,7 +135,7 @@ export class ProviderService {
       }
 
       const providerInfo: ProviderConfigInfo = {
-        apiKeySet: !!config.apiKey,
+        apiKeySet: !!config.apiKey || !!config.apiKeyFile,
         // Users can disable providers without removing credentials from providers.jsonc.
         isEnabled,
         isConfigured: false, // computed below
