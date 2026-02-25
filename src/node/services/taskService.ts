@@ -756,6 +756,16 @@ export class TaskService {
     const cfg = this.config.loadConfigOrDefault();
     const taskSettings = cfg.taskSettings ?? DEFAULT_TASK_SETTINGS;
 
+    // Trust gate: block task creation for untrusted projects.
+    // The frontend shows a confirmation dialog for primary workspace creation,
+    // but task spawning bypasses the UI — enforce trust here as defense-in-depth.
+    const taskProjectConfig = cfg.projects.get(parentMeta.projectPath);
+    if (taskProjectConfig?.trusted === false) {
+      return Err(
+        "This project must be trusted before creating workspaces. Trust the project in Settings → Security, or create a workspace from the project page."
+      );
+    }
+
     const parentEntry = findWorkspaceEntry(cfg, parentWorkspaceId);
     if (parentEntry?.workspace.taskStatus === "reported") {
       return Err("Task.create: cannot spawn new tasks after agent_report");
@@ -2106,6 +2116,18 @@ export class TaskService {
         inMemoryInit: Boolean(inMemoryInit),
         persistedInit: Boolean(persistedInit),
       });
+
+      // Trust gate: skip dequeued tasks if the project lost trust since queuing.
+      const dequeueCfg = this.config.loadConfigOrDefault();
+      const dequeueProjectConfig = dequeueCfg.projects.get(taskEntry.projectPath);
+      if (dequeueProjectConfig?.trusted === false) {
+        log.warn("Skipping queued task for untrusted project", {
+          taskId,
+          projectPath: taskEntry.projectPath,
+        });
+        taskQueueDebug("TaskService.maybeStartQueuedTasks skipped (untrusted)", { taskId });
+        continue;
+      }
 
       // If the workspace doesn't exist yet, create it now (fork preferred, else createWorkspace).
       if (!workspaceExists) {
