@@ -11,7 +11,7 @@ import { useAPI } from "@/browser/contexts/API";
  */
 export function SecuritySection() {
   const { api } = useAPI();
-  const { projects, refreshProjects } = useProjectContext();
+  const { userProjects, refreshProjects } = useProjectContext();
   const [pendingPath, setPendingPath] = useState<string | null>(null);
 
   const handleToggleTrust = async (projectPath: string, currentlyTrusted: boolean) => {
@@ -27,7 +27,7 @@ export function SecuritySection() {
     }
   };
 
-  const projectEntries = Array.from(projects.entries());
+  const projectEntries = Array.from(userProjects.entries());
 
   return (
     <div className="flex flex-col gap-6">

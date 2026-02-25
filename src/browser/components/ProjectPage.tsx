@@ -94,8 +94,8 @@ export const ProjectPage: React.FC<ProjectPageProps> = ({
   );
   const { config: providersConfig, loading: providersLoading } = useProvidersConfig();
   const hasProviders = hasConfiguredProvider(providersConfig);
-  const { projects, refreshProjects } = useProjectContext();
-  const isProjectTrusted = projects.get(projectPath)?.trusted === true;
+  const { getProjectConfig, refreshProjects } = useProjectContext();
+  const isProjectTrusted = getProjectConfig(projectPath)?.trusted === true;
   const shouldShowAgentsInitBanner = !providersLoading && hasProviders && showAgentsInitNudge;
 
   // Git repository state for the banner
