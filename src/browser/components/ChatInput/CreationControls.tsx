@@ -939,20 +939,17 @@ export function CreationControls(props: CreationControlsProps) {
           </div>
           {nameState.error && <NameErrorDisplay error={nameState.error} />}
         </div>
-
-        {/* Section selector - right-aligned, same row as workspace name */}
-        {props.sections && props.sections.length > 0 && props.onSectionChange && (
-          <>
-            <div className="flex-1" />
-            <SectionPicker
-              sections={props.sections}
-              selectedSectionId={props.selectedSectionId ?? null}
-              onSectionChange={props.onSectionChange}
-              disabled={props.disabled}
-            />
-          </>
-        )}
       </div>
+
+      {/* Section selector - own row below the project / workspace-name header */}
+      {props.sections && props.sections.length > 0 && props.onSectionChange && (
+        <SectionPicker
+          sections={props.sections}
+          selectedSectionId={props.selectedSectionId ?? null}
+          onSectionChange={props.onSectionChange}
+          disabled={props.disabled}
+        />
+      )}
 
       {/* Runtime and source branch controls */}
       <div className="flex flex-col gap-1.5" data-component="RuntimeTypeGroup">
