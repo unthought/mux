@@ -35,6 +35,10 @@ import {
   STATUS_MESSAGE_MAX_LENGTH,
   WEB_FETCH_MAX_OUTPUT_BYTES,
 } from "@/common/constants/toolLimits";
+import {
+  ConfigMutationPathSchema,
+  ConfigOperationsSchema,
+} from "@/common/config/schemas/configOperations";
 import { TOOL_EDIT_WARNING } from "@/common/types/tools";
 import { SYSTEM1_BASH_OUTPUT_COMPACTION_LIMITS } from "@/common/types/tasks";
 import { THINKING_LEVELS } from "@/common/types/thinking";
@@ -604,6 +608,8 @@ export const System1KeepRangeSchema = z.object({
   reason: z.string().nullish().describe("Optional short reason for keeping this range"),
 });
 
+const MuxConfigFileSchema = z.enum(["providers", "config"]);
+
 /**
  * Tool definitions: single source of truth
  * Key = tool name, Value = { description, schema }
@@ -712,6 +718,34 @@ export const TOOL_DEFINITIONS = {
           .describe(
             "Must be true to apply the write. The agent should ask the user for confirmation first."
           ),
+      })
+      .strict(),
+  },
+  mux_config_read: {
+    description:
+      "Read the mux configuration file. Returns the current configuration with secrets redacted. " +
+      "Use 'providers' for ~/.mux/providers.jsonc (API provider settings) or 'config' for ~/.mux/config.json (app settings).",
+    schema: z
+      .object({
+        file: MuxConfigFileSchema.describe("Which configuration file to read"),
+        path: ConfigMutationPathSchema.nullish().describe(
+          "Optional path segments to read a specific nested value. If omitted, returns the full config."
+        ),
+      })
+      .strict(),
+  },
+  mux_config_write: {
+    description:
+      "Write to the mux configuration file. Applies one or more set/delete operations and validates the full document before writing. " +
+      "Use 'providers' for ~/.mux/providers.jsonc or 'config' for ~/.mux/config.json. " +
+      "Requires explicit confirmation via confirm: true.",
+    schema: z
+      .object({
+        file: MuxConfigFileSchema.describe("Which configuration file to write"),
+        operations: ConfigOperationsSchema.describe("Operations to apply to the config document"),
+        confirm: z
+          .boolean()
+          .describe("Must be true to apply the write. Ask the user for confirmation first."),
       })
       .strict(),
   },
@@ -1319,6 +1353,43 @@ export const MuxGlobalAgentsWriteToolResultSchema = z.union([
 ]);
 
 /**
+ * mux_config_read tool result.
+ */
+export const MuxConfigReadToolResultSchema = z.union([
+  z.object({
+    success: z.literal(true),
+    file: z.string(),
+    data: z.unknown(),
+  }),
+  z.object({
+    success: z.literal(false),
+    error: z.string(),
+  }),
+]);
+
+const MuxConfigWriteValidationIssueSchema = z.object({
+  path: z.array(z.union([z.string(), z.number()])),
+  message: z.string(),
+});
+
+/**
+ * mux_config_write tool result.
+ */
+export const MuxConfigWriteToolResultSchema = z.union([
+  z.object({
+    success: z.literal(true),
+    file: z.string(),
+    appliedOps: z.number(),
+    summary: z.string(),
+  }),
+  z.object({
+    success: z.literal(false),
+    error: z.string(),
+    validationIssues: z.array(MuxConfigWriteValidationIssueSchema).optional(),
+  }),
+]);
+
+/**
  * File read tool result - content or error.
  */
 export const FileReadToolResultSchema = z.union([
@@ -1511,6 +1582,8 @@ export function getAvailableTools(
           "agent_skill_list",
           "agent_skill_write",
           "agent_skill_delete",
+          "mux_config_read",
+          "mux_config_write",
         ]
       : []),
     "file_read",
