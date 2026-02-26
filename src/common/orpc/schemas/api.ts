@@ -1597,7 +1597,6 @@ export const config = {
       muxGatewayModels: z.array(z.string()).optional(),
       defaultModel: z.string().optional(),
       hiddenModels: z.array(z.string()).optional(),
-      preferredCompactionModel: z.string().optional(),
       stopCoderWorkspaceOnArchive: z.boolean(),
       runtimeEnablement: z.record(z.string(), z.boolean()),
       defaultRuntime: z.string().nullable(),
@@ -1646,7 +1645,6 @@ export const config = {
     input: z.object({
       defaultModel: z.string().optional(),
       hiddenModels: z.array(z.string()).optional(),
-      preferredCompactionModel: z.string().optional(),
     }),
     output: z.void(),
   },
