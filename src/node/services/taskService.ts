@@ -2559,6 +2559,14 @@ export class TaskService {
       // Those task IDs are tracked in-memory and excluded from parent auto-resume nudges.
       const activeTaskIds = this.listActiveDescendantAgentTaskIds(workspaceId);
       const blockingTaskIds = activeTaskIds.filter((id) => !this.isTaskQueueBackgrounded(id));
+
+      // One-shot semantics: consume exemptions after this stream-end's decision.
+      // The immediate stream-end after queue-backgrounding is suppressed, but any
+      // subsequent voluntary stream-end must nudge if tasks are still active.
+      for (const taskId of activeTaskIds) {
+        this.markTaskForegroundRelevant(taskId);
+      }
+
       if (blockingTaskIds.length === 0) {
         log.debug("Skipping parent auto-resume: all active descendants were queue-backgrounded", {
           workspaceId,

@@ -1505,7 +1505,7 @@ describe("TaskService", () => {
     );
   });
 
-  test("cross-stream regression — queue-backgrounded task suppresses nudges on later stream ends", async () => {
+  test("one-shot exemption — first stream-end suppressed, second stream-end nudges", async () => {
     const config = await createTestConfig(rootDir);
 
     const projectPath = path.join(rootDir, "repo");
@@ -1565,6 +1565,9 @@ describe("TaskService", () => {
       parts: [],
     });
 
+    // First stream-end: exemption active → no nudge.
+    expect(sendMessage).not.toHaveBeenCalled();
+
     await internal.handleStreamEnd({
       type: "stream-end",
       workspaceId: rootWorkspaceId,
@@ -1573,7 +1576,128 @@ describe("TaskService", () => {
       parts: [],
     });
 
+    // Second stream-end: exemption consumed → nudge fires.
+    expect(sendMessage).toHaveBeenCalledTimes(1);
+    expect(sendMessage).toHaveBeenCalledWith(
+      rootWorkspaceId,
+      expect.stringContaining(childTaskId),
+      expect.objectContaining({
+        model: "openai:gpt-5.2",
+        thinkingLevel: "medium",
+      }),
+      expect.objectContaining({ skipAutoResumeReset: true, synthetic: true })
+    );
+  });
+
+  test("multiple queue-backgrounded tasks — one-shot exemptions consumed together", async () => {
+    const config = await createTestConfig(rootDir);
+
+    const projectPath = path.join(rootDir, "repo");
+    const rootWorkspaceId = "root-111";
+    const taskAId = "task-bg-a";
+    const taskBId = "task-bg-b";
+
+    await config.saveConfig({
+      projects: new Map([
+        [
+          projectPath,
+          {
+            workspaces: [
+              {
+                path: path.join(projectPath, "root"),
+                id: rootWorkspaceId,
+                name: "root",
+                aiSettings: { model: "openai:gpt-5.2", thinkingLevel: "medium" },
+              },
+              {
+                path: path.join(projectPath, "child-task-bg-a"),
+                id: taskAId,
+                name: "agent_explore_a",
+                parentWorkspaceId: rootWorkspaceId,
+                agentType: "explore",
+                taskStatus: "running",
+                taskModelString: "openai:gpt-5.2",
+                taskThinkingLevel: "medium",
+              },
+              {
+                path: path.join(projectPath, "child-task-bg-b"),
+                id: taskBId,
+                name: "agent_explore_b",
+                parentWorkspaceId: rootWorkspaceId,
+                agentType: "explore",
+                taskStatus: "running",
+                taskModelString: "openai:gpt-5.2",
+                taskThinkingLevel: "medium",
+              },
+            ],
+          },
+        ],
+      ]),
+      taskSettings: { maxParallelAgentTasks: 3, maxTaskNestingDepth: 3 },
+    });
+
+    const { aiService } = createAIServiceMocks(config);
+    const { workspaceService, sendMessage } = createWorkspaceServiceMocks();
+    const { taskService } = createTaskServiceHarness(config, { aiService, workspaceService });
+
+    const waitAPromise = taskService.waitForAgentReport(taskAId, {
+      requestingWorkspaceId: rootWorkspaceId,
+      backgroundOnMessageQueued: true,
+    });
+    const waitBPromise = taskService.waitForAgentReport(taskBId, {
+      requestingWorkspaceId: rootWorkspaceId,
+      backgroundOnMessageQueued: true,
+    });
+    expect(taskService.backgroundForegroundWaitsForWorkspace(rootWorkspaceId)).toBe(2);
+
+    const [waitAError, waitBError] = await Promise.all([
+      waitAPromise.catch((error: unknown) => error),
+      waitBPromise.catch((error: unknown) => error),
+    ]);
+    expect(waitAError).toBeInstanceOf(ForegroundWaitBackgroundedError);
+    expect(waitBError).toBeInstanceOf(ForegroundWaitBackgroundedError);
+
+    const internal = taskService as unknown as {
+      handleStreamEnd: (event: StreamEndEvent) => Promise<void>;
+    };
+
+    await internal.handleStreamEnd({
+      type: "stream-end",
+      workspaceId: rootWorkspaceId,
+      messageId: "assistant-root-1",
+      metadata: { model: "openai:gpt-5.2" },
+      parts: [],
+    });
+
     expect(sendMessage).not.toHaveBeenCalled();
+
+    await internal.handleStreamEnd({
+      type: "stream-end",
+      workspaceId: rootWorkspaceId,
+      messageId: "assistant-root-2",
+      metadata: { model: "openai:gpt-5.2" },
+      parts: [],
+    });
+
+    expect(sendMessage).toHaveBeenCalledTimes(1);
+    expect(sendMessage).toHaveBeenCalledWith(
+      rootWorkspaceId,
+      expect.stringContaining(taskAId),
+      expect.objectContaining({
+        model: "openai:gpt-5.2",
+        thinkingLevel: "medium",
+      }),
+      expect.objectContaining({ skipAutoResumeReset: true, synthetic: true })
+    );
+    expect(sendMessage).toHaveBeenCalledWith(
+      rootWorkspaceId,
+      expect.stringContaining(taskBId),
+      expect.objectContaining({
+        model: "openai:gpt-5.2",
+        thinkingLevel: "medium",
+      }),
+      expect.objectContaining({ skipAutoResumeReset: true, synthetic: true })
+    );
   });
 
   test("renewed foreground wait clears stale queue-backgrounded exemption", async () => {

@@ -101,6 +101,12 @@ describe("task_await tool", () => {
         backgroundOnMessageQueued: true,
       })
     );
+    expect(waitForAgentReport).toHaveBeenCalledWith(
+      "t2",
+      expect.objectContaining({
+        backgroundOnMessageQueued: true,
+      })
+    );
   });
 
   it("supports filterDescendantAgentTaskIds without losing this binding", async () => {
