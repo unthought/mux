@@ -1057,12 +1057,20 @@ export const ImmersiveReviewView: React.FC<ImmersiveReviewViewProps> = (props) =
       const anchorIndex = shiftKey
         ? (selectedLineRangeRef.current?.startIndex ?? activeLineIndexRef.current ?? lineIndex)
         : lineIndex;
-      setActiveLineIndex(lineIndex);
+      setActiveLineIndex((previousLineIndex) =>
+        previousLineIndex === lineIndex ? previousLineIndex : lineIndex
+      );
 
       if (shiftKey) {
-        setSelectedLineRange({ startIndex: anchorIndex, endIndex: lineIndex });
+        setSelectedLineRange((previousRange) => {
+          if (previousRange?.startIndex === anchorIndex && previousRange?.endIndex === lineIndex) {
+            return previousRange;
+          }
+
+          return { startIndex: anchorIndex, endIndex: lineIndex };
+        });
       } else {
-        setSelectedLineRange(null);
+        setSelectedLineRange((previousRange) => (previousRange === null ? previousRange : null));
       }
 
       if (isTouchExperience && !shiftKey && resolvedHunk) {
