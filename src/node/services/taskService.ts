@@ -247,6 +247,7 @@ export class TaskService {
     Set<PendingTaskWaiter>
   >();
   private readonly userBackgroundedTaskIds = new Set<string>();
+
   // Cache completed reports so callers can retrieve them without re-reading disk.
   // Bounded by max entries; disk persistence is the source of truth for restart-safety.
   private readonly completedReportsByTaskId = new Map<string, CompletedAgentReportCacheEntry>();
@@ -260,6 +261,18 @@ export class TaskService {
   private interruptedParentWorkspaceIds = new Set<string>();
   /** Tracks consecutive auto-resumes per workspace. Reset when a user message is sent. */
   private consecutiveAutoResumes = new Map<string, number>();
+
+  private markTaskQueueBackgrounded(taskId: string): void {
+    this.userBackgroundedTaskIds.add(taskId);
+  }
+
+  private markTaskForegroundRelevant(taskId: string): void {
+    this.userBackgroundedTaskIds.delete(taskId);
+  }
+
+  private isTaskQueueBackgrounded(taskId: string): boolean {
+    return this.userBackgroundedTaskIds.has(taskId);
+  }
 
   constructor(
     private readonly config: Config,
@@ -1395,7 +1408,7 @@ export class TaskService {
     let count = 0;
     for (const waiter of waiters) {
       try {
-        this.userBackgroundedTaskIds.add(waiter.taskId);
+        this.markTaskQueueBackgrounded(waiter.taskId);
         waiter.reject(new ForegroundWaitBackgroundedError());
         count++;
       } catch {
@@ -1425,6 +1438,10 @@ export class TaskService {
     assert(Number.isFinite(timeoutMs) && timeoutMs > 0, "waitForAgentReport: timeoutMs invalid");
 
     const requestingWorkspaceId = coerceNonEmptyString(options?.requestingWorkspaceId);
+    if (requestingWorkspaceId) {
+      // A renewed foreground wait means this task is blocking again unless re-backgrounded later.
+      this.markTaskForegroundRelevant(taskId);
+    }
 
     const tryReadPersistedReport = async (): Promise<{
       reportMarkdown: string;
@@ -2541,7 +2558,7 @@ export class TaskService {
       // Foreground waits can be backgrounded at runtime when users queue another message.
       // Those task IDs are tracked in-memory and excluded from parent auto-resume nudges.
       const activeTaskIds = this.listActiveDescendantAgentTaskIds(workspaceId);
-      const blockingTaskIds = activeTaskIds.filter((id) => !this.userBackgroundedTaskIds.has(id));
+      const blockingTaskIds = activeTaskIds.filter((id) => !this.isTaskQueueBackgrounded(id));
       if (blockingTaskIds.length === 0) {
         log.debug("Skipping parent auto-resume: all active descendants were queue-backgrounded", {
           workspaceId,
@@ -2989,7 +3006,7 @@ export class TaskService {
     childEntry: { projectPath: string; workspace: WorkspaceConfigEntry } | null | undefined,
     reportArgs: { reportMarkdown: string; title?: string }
   ): Promise<void> {
-    this.userBackgroundedTaskIds.delete(childWorkspaceId);
+    this.markTaskForegroundRelevant(childWorkspaceId);
 
     assert(
       childWorkspaceId.length > 0,
@@ -3145,7 +3162,7 @@ export class TaskService {
   }
 
   private resolveWaiters(taskId: string, report: { reportMarkdown: string; title?: string }): void {
-    this.userBackgroundedTaskIds.delete(taskId);
+    this.markTaskForegroundRelevant(taskId);
 
     const cfg = this.config.loadConfigOrDefault();
     const parentById = this.buildAgentTaskIndex(cfg).parentById;
@@ -3175,7 +3192,7 @@ export class TaskService {
   }
 
   private rejectWaiters(taskId: string, error: Error): void {
-    this.userBackgroundedTaskIds.delete(taskId);
+    this.markTaskForegroundRelevant(taskId);
 
     const waiters = this.pendingWaitersByTaskId.get(taskId);
     if (!waiters || waiters.length === 0) {
