@@ -2572,7 +2572,7 @@ describe("TaskService", () => {
       expect(count2).toBe(0);
     });
 
-    test("does not affect foreground waiters that did not opt into backgrounding", async () => {
+    test("defaults to queue-backgroundable when requestingWorkspaceId is present", async () => {
       const config = await createTestConfig(rootDir);
 
       const parentId = "parent-ws";
@@ -2605,6 +2605,49 @@ describe("TaskService", () => {
 
       const waitPromise = taskService.waitForAgentReport(childId, {
         requestingWorkspaceId: parentId,
+      });
+
+      const count = taskService.backgroundForegroundWaitsForWorkspace(parentId);
+      expect(count).toBe(1);
+
+      const waitError = await waitPromise.catch((error: unknown) => error);
+      expect(waitError).toBeInstanceOf(ForegroundWaitBackgroundedError);
+    });
+
+    test("does not affect foreground waiters that explicitly opt out of backgrounding", async () => {
+      const config = await createTestConfig(rootDir);
+
+      const parentId = "parent-ws";
+      const childId = "child-task-ws";
+      const projectPath = "/test/project";
+
+      await config.saveConfig({
+        projects: new Map([
+          [
+            projectPath,
+            {
+              workspaces: [
+                { path: `${projectPath}/parent`, id: parentId, name: "parent" },
+                {
+                  path: `${projectPath}/child`,
+                  id: childId,
+                  name: "agent_explore_child",
+                  parentWorkspaceId: parentId,
+                  agentType: "explore",
+                  taskStatus: "running",
+                },
+              ],
+            },
+          ],
+        ]),
+        taskSettings: { maxParallelAgentTasks: 2, maxTaskNestingDepth: 3 },
+      });
+
+      const { taskService } = createTaskServiceHarness(config);
+
+      const waitPromise = taskService.waitForAgentReport(childId, {
+        requestingWorkspaceId: parentId,
+        backgroundOnMessageQueued: false,
       });
 
       const count = taskService.backgroundForegroundWaitsForWorkspace(parentId);

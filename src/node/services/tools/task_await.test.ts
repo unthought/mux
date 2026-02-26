@@ -74,12 +74,13 @@ describe("task_await tool", () => {
     using tempDir = new TestTempDir("test-task-await-tool");
     const baseConfig = createTestToolConfig(tempDir.path, { workspaceId: "parent-workspace" });
 
+    const waitForAgentReport = mock((taskId: string) =>
+      Promise.resolve({ reportMarkdown: `report:${taskId}`, title: `title:${taskId}` })
+    );
     const taskService = {
       listActiveDescendantAgentTaskIds: mock(() => ["t1", "t2"]),
       isDescendantAgentTask: mock(() => Promise.resolve(true)),
-      waitForAgentReport: mock((taskId: string) =>
-        Promise.resolve({ reportMarkdown: `report:${taskId}`, title: `title:${taskId}` })
-      ),
+      waitForAgentReport,
     } as unknown as TaskService;
 
     const tool = createTaskAwaitTool({ ...baseConfig, taskService });
@@ -94,6 +95,12 @@ describe("task_await tool", () => {
         { status: "completed", taskId: "t2", reportMarkdown: "report:t2", title: "title:t2" },
       ],
     });
+    expect(waitForAgentReport).toHaveBeenCalledWith(
+      "t1",
+      expect.objectContaining({
+        backgroundOnMessageQueued: true,
+      })
+    );
   });
 
   it("supports filterDescendantAgentTaskIds without losing this binding", async () => {
@@ -281,5 +288,11 @@ describe("task_await tool", () => {
     });
     expect(getAgentTaskStatus).toHaveBeenCalledWith("t1");
     expect(waitForAgentReport).toHaveBeenCalledTimes(1);
+    expect(waitForAgentReport).toHaveBeenCalledWith(
+      "t1",
+      expect.objectContaining({
+        backgroundOnMessageQueued: true,
+      })
+    );
   });
 });

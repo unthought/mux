@@ -176,6 +176,7 @@ export const createTaskAwaitTool: ToolFactory = (config: ToolConfiguration) => {
                 timeoutMs: 1,
                 abortSignal,
                 requestingWorkspaceId: workspaceId,
+                backgroundOnMessageQueued: true,
               });
 
               const gitFormatPatch = await readGitFormatPatchArtifact(taskId);
@@ -200,6 +201,7 @@ export const createTaskAwaitTool: ToolFactory = (config: ToolConfiguration) => {
               timeoutMs,
               abortSignal,
               requestingWorkspaceId: workspaceId,
+              backgroundOnMessageQueued: true,
             });
 
             const gitFormatPatch = await readGitFormatPatchArtifact(taskId);

@@ -1581,7 +1581,7 @@ export class TaskService {
         this.pendingWaitersByTaskId.set(taskId, list);
 
         const shouldBackgroundOnQueuedMessage = Boolean(
-          requestingWorkspaceId && options?.backgroundOnMessageQueued
+          requestingWorkspaceId && (options?.backgroundOnMessageQueued ?? true)
         );
         entry.requestingWorkspaceId = requestingWorkspaceId;
         entry.backgroundOnMessageQueued = shouldBackgroundOnQueuedMessage;
