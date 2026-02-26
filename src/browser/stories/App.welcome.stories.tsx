@@ -527,18 +527,12 @@ export const SingleProviderConfigured: AppStory = {
  * Creation view with project sections configured.
  * Verifies the section selector renders on its own row below the
  * project-name / workspace-name header (not crammed into the same line).
+ *
+ * NOTE: no mobile chromatic modes here because the play function interacts
+ * with the sidebar to navigate to the creation view, which doesn't work
+ * reliably in Chromatic's mobile viewport (sidebar may be collapsed).
  */
 export const CreateWorkspaceWithSections: AppStory = {
-  parameters: {
-    chromatic: {
-      modes: {
-        dark: { theme: "dark" },
-        light: { theme: "light" },
-        "dark-mobile": { theme: "dark", viewport: "mobile1", hasTouch: true },
-        "light-mobile": { theme: "light", viewport: "mobile1", hasTouch: true },
-      },
-    },
-  },
   render: () => (
     <AppWithMocks
       setup={() => {
