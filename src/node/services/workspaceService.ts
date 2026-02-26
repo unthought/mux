@@ -4693,7 +4693,8 @@ export class WorkspaceService extends EventEmitter {
       workspaceEntry?.aiSettingsByAgent?.[WORKSPACE_DEFAULTS.agentId] ?? workspaceEntry?.aiSettings;
 
     // Compaction defaults now flow through per-agent defaults.
-    const globalCompactDefaultModel = config.agentAiDefaults?.compact?.modelString;
+    const globalCompactDefaults = config.agentAiDefaults?.compact;
+    const globalCompactDefaultModel = globalCompactDefaults?.modelString;
     const normalizedGlobalCompactDefaultModel =
       typeof globalCompactDefaultModel === "string"
         ? normalizeGatewayModel(globalCompactDefaultModel.trim())
@@ -4731,8 +4732,11 @@ export class WorkspaceService extends EventEmitter {
       model = WORKSPACE_DEFAULTS.model;
     }
 
+    const globalCompactDefaultThinking = globalCompactDefaults?.thinkingLevel;
+
     const requestedThinking =
       compactAgentSettings?.thinkingLevel ??
+      globalCompactDefaultThinking ??
       execAgentSettings?.thinkingLevel ??
       activity?.lastThinkingLevel ??
       WORKSPACE_DEFAULTS.thinkingLevel;
