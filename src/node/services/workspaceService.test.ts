@@ -479,6 +479,25 @@ describe("WorkspaceService sendMessage status clearing", () => {
     expect(fakeSession.queueMessage).toHaveBeenCalled();
   });
 
+  test("does not background foreground task waits when queueMessage enqueues nothing", async () => {
+    fakeSession.isBusy.mockReturnValue(true);
+    fakeSession.queueMessage.mockReturnValue(null);
+
+    const backgroundForegroundWaitsForWorkspace = mock(() => 0);
+    workspaceService.setTaskService({
+      getAgentTaskStatus: mock(() => "running" as const),
+      backgroundForegroundWaitsForWorkspace,
+    } as unknown as TaskService);
+
+    const result = await workspaceService.sendMessage("test-workspace", "   ", {
+      model: "openai:gpt-4o-mini",
+      agentId: "exec",
+    });
+
+    expect(result.success).toBe(true);
+    expect(backgroundForegroundWaitsForWorkspace).not.toHaveBeenCalled();
+  });
+
   test("backgrounds foreground task waits when effective queue mode is tool-end despite incoming turn-end", async () => {
     fakeSession.isBusy.mockReturnValue(true);
     // Incoming mode is turn-end but queue's effective mode is tool-end (sticky from prior enqueue)

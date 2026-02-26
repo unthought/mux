@@ -6,7 +6,7 @@ import type { ToolExecutionOptions } from "ai";
 import { createTaskAwaitTool } from "./task_await";
 import { TestTempDir, createTestToolConfig } from "./testHelpers";
 import { getSubagentGitPatchArtifactsFilePath } from "@/node/services/subagentGitPatchArtifacts";
-import type { TaskService } from "@/node/services/taskService";
+import { ForegroundWaitBackgroundedError, type TaskService } from "@/node/services/taskService";
 
 const mockToolCallOptions: ToolExecutionOptions = {
   toolCallId: "test-call-id",
@@ -188,6 +188,37 @@ describe("task_await tool", () => {
     expect(listActiveDescendantAgentTaskIds).toHaveBeenCalledWith("parent-workspace");
     expect(result).toEqual({
       results: [{ status: "completed", taskId: "t1", reportMarkdown: "ok", title: undefined }],
+    });
+  });
+
+  it("returns running status when foreground wait is backgrounded", async () => {
+    using tempDir = new TestTempDir("test-task-await-tool-backgrounded");
+    const baseConfig = createTestToolConfig(tempDir.path, { workspaceId: "parent-workspace" });
+
+    const waitForAgentReport = mock(() => Promise.reject(new ForegroundWaitBackgroundedError()));
+    const getAgentTaskStatus = mock(() => "running" as const);
+
+    const taskService = {
+      listActiveDescendantAgentTaskIds: mock(() => []),
+      isDescendantAgentTask: mock(() => Promise.resolve(true)),
+      waitForAgentReport,
+      getAgentTaskStatus,
+    } as unknown as TaskService;
+
+    const tool = createTaskAwaitTool({ ...baseConfig, taskService });
+
+    const result: unknown = await Promise.resolve(
+      tool.execute!({ task_ids: ["t1"] }, mockToolCallOptions)
+    );
+
+    expect(result).toEqual({
+      results: [
+        {
+          status: "running",
+          taskId: "t1",
+          note: "Task sent to background because a new message was queued. Use task_await to monitor progress.",
+        },
+      ],
     });
   });
 

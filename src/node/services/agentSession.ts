@@ -3838,9 +3838,12 @@ export class AgentSession {
     message: string,
     options?: SendMessageOptions & { fileParts?: FilePart[] },
     internal?: { synthetic?: boolean }
-  ): "tool-end" | "turn-end" {
+  ): "tool-end" | "turn-end" | null {
     this.assertNotDisposed("queueMessage");
-    this.messageQueue.add(message, options, internal);
+    const didEnqueue = this.messageQueue.add(message, options, internal);
+    if (!didEnqueue) {
+      return null;
+    }
     this.emitQueuedMessageChanged();
     // Signal to bash_output that it should return early to process queued messages
     // only for tool-end dispatches.
