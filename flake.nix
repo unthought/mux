@@ -172,6 +172,7 @@
               # Node + build tooling
               nodejs
               gnumake
+              stdenv.cc.cc.lib # Provides libstdc++.so.6 for DuckDB native bindings under Bun
 
               # Common CLIs
               git
@@ -199,6 +200,10 @@
               asciinema
             ]
             ++ lib.optionals stdenv.isLinux [ docker ];
+
+          # Bun does not carry libstdc++ on Linux, so native modules like @duckdb/node-bindings
+          # fail to dlopen during tests unless we expose the GCC runtime in the shell.
+          LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath [ pkgs.stdenv.cc.cc.lib ];
         };
       }
     );
