@@ -7,6 +7,7 @@ import { Tooltip, TooltipTrigger, TooltipContent } from "../Tooltip/Tooltip";
 import { useCopyToClipboard } from "@/browser/hooks/useCopyToClipboard";
 import { invalidateGitStatus, useGitStatus } from "@/browser/stores/GitStatusStore";
 import { createLRUCache } from "@/browser/utils/lruCache";
+import { buildCheckoutCommand, buildRemoteBranchListCommand } from "./branchCommands";
 
 // LRU cache for persisting branch names across app restarts
 const branchCache = createLRUCache<string>({
@@ -169,17 +170,22 @@ export function BranchSelector({ workspaceId, workspaceName, className }: Branch
 
       try {
         // Fetch one extra to detect truncation
+        const { command, args } = buildRemoteBranchListCommand(remote, MAX_REMOTE_BRANCHES);
         const result = await api.workspace.executeBash({
           workspaceId,
-          script: `git branch -r --list '${remote}/*' --sort=-committerdate --format='%(refname:short)' 2>/dev/null | head -${MAX_REMOTE_BRANCHES + 1}`,
+          script: "",
+          command,
+          args,
           options: { timeout_secs: 5 },
         });
 
         if (result.success && result.data.success && result.data.output) {
+          // `for-each-ref refs/remotes/<remote>` includes the remote symref (`<remote>`)
+          // and may include `<remote>/HEAD`; hide those pseudo-refs from selectable branches.
           const branches = result.data.output
             .split("\n")
             .map((b) => b.trim())
-            .filter((b) => b.length > 0);
+            .filter((b) => b.length > 0 && b !== remote && b !== `${remote}/HEAD`);
           const truncated = branches.length > MAX_REMOTE_BRANCHES;
           setRemoteStates((prev) => ({
             ...prev,
@@ -224,9 +230,12 @@ export function BranchSelector({ workspaceId, workspaceName, className }: Branch
       invalidateGitStatus(workspaceId);
 
       try {
+        const { command, args } = buildCheckoutCommand(checkoutTarget);
         const result = await api.workspace.executeBash({
           workspaceId,
-          script: `git checkout ${checkoutTarget} 2>&1`,
+          script: "",
+          command,
+          args,
           options: { timeout_secs: 30 },
         });
 

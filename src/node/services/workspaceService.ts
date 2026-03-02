@@ -4448,7 +4448,9 @@ export class WorkspaceService extends EventEmitter {
     script: string,
     options?: {
       timeout_secs?: number;
-    }
+    },
+    command?: string,
+    args?: string[]
   ): Promise<Result<BashToolResult>> {
     // Block bash execution while workspace is being removed to prevent races with directory deletion.
     // A common case: subagent calls agent_report → frontend's GitStatusStore triggers a git status
@@ -4479,18 +4481,15 @@ export class WorkspaceService extends EventEmitter {
     // Same behavior as AI tools - 5 min timeout, then proceeds anyway
     await this.initStateManager.waitForInit(workspaceId);
 
+    if (args != null && command == null) {
+      return Err("executeBash command args require a command");
+    }
+
     try {
       // Get actual workspace path from config
-      const workspace = this.config.findWorkspace(workspaceId);
-      if (!workspace) {
+      if (!this.config.findWorkspace(workspaceId)) {
         return Err(`Workspace ${workspaceId} not found in config`);
       }
-
-      // Load project secrets
-      const projectSecrets = this.config.getEffectiveSecrets(metadata.projectPath);
-
-      // Create scoped temp directory for this IPC call
-      using tempDir = new DisposableTempDir("mux-ipc-bash");
 
       // Create runtime and compute workspace path
       const runtime = createRuntime(metadata.runtimeConfig, {
@@ -4506,10 +4505,28 @@ export class WorkspaceService extends EventEmitter {
 
       const workspacePath = runtime.getWorkspacePath(metadata.projectPath, metadata.name);
 
-      // Read trust state so tool_env is sourced for trusted projects
+      // Read trust state so tool_env is sourced for trusted projects.
       const projectConfig = this.config
         .loadConfigOrDefault()
         .projects.get(stripTrailingSlashes(metadata.projectPath));
+
+      let scriptToExecute = script;
+      if (command != null) {
+        if (command !== "git") {
+          return Err("executeBash command mode only supports git");
+        }
+
+        const commandArgs = args ?? [];
+        scriptToExecute = [shellQuote(command), ...commandArgs.map((arg) => shellQuote(arg))].join(
+          " "
+        );
+      }
+
+      // Load project secrets
+      const projectSecrets = this.config.getEffectiveSecrets(metadata.projectPath);
+
+      // Create scoped temp directory for this IPC call
+      using tempDir = new DisposableTempDir("mux-ipc-bash");
 
       // Create bash tool
       const bashTool = createBashTool({
@@ -4524,7 +4541,7 @@ export class WorkspaceService extends EventEmitter {
       // Execute the script
       const result = (await bashTool.execute!(
         {
-          script,
+          script: scriptToExecute,
           timeout_secs: options?.timeout_secs ?? 120,
         },
         {
