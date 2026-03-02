@@ -36,6 +36,83 @@ export function isClosedClientError(error: unknown): boolean {
   );
 }
 
+export const MCP_TOOL_CALL_TIMEOUT_MS = 300_000;
+
+/**
+ * Thrown by runMCPToolWithDeadline when abort or timeout wins the race.
+ * Typed so shouldRecycleClientAfterToolError can distinguish wrapper-generated
+ * deadline errors from MCP server errors that coincidentally contain similar text.
+ */
+class MCPDeadlineError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "MCPDeadlineError";
+  }
+}
+
+/**
+ * Run an MCP tool call with unified timeout + abort lifecycle.
+ * All cleanup (timer, abort listener) happens in one `finally` block,
+ * so abort cannot leave orphaned timers or dangling promises.
+ */
+export async function runMCPToolWithDeadline<T>(
+  start: () => Promise<T>,
+  opts: { toolName: string; timeoutMs: number; signal?: AbortSignal }
+): Promise<T> {
+  const { signal, timeoutMs, toolName } = opts;
+
+  // Pre-abort short-circuit: skip all async work if already canceled.
+  if (signal?.aborted) {
+    throw new MCPDeadlineError("Interrupted");
+  }
+
+  let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+  let cleanupAbort: (() => void) | undefined;
+
+  // Lazy start: tool execution begins only after pre-abort check passes.
+  const op = Promise.resolve().then(start);
+
+  const timeout = new Promise<never>((_resolve, reject) => {
+    timeoutHandle = setTimeout(
+      () => reject(new MCPDeadlineError(`MCP tool '${toolName}' timed out after ${timeoutMs}ms`)),
+      timeoutMs
+    );
+    if (
+      timeoutHandle !== undefined &&
+      typeof timeoutHandle === "object" &&
+      "unref" in timeoutHandle &&
+      typeof timeoutHandle.unref === "function"
+    ) {
+      timeoutHandle.unref();
+    }
+  });
+
+  const aborted = signal
+    ? new Promise<never>((_resolve, reject) => {
+        const onAbort = () => reject(new MCPDeadlineError("Interrupted"));
+        signal.addEventListener("abort", onAbort, { once: true });
+        cleanupAbort = () => signal.removeEventListener("abort", onAbort);
+      })
+    : undefined;
+
+  try {
+    const racers: Array<Promise<T>> = [op, timeout];
+    if (aborted) {
+      racers.push(aborted);
+    }
+    return await Promise.race(racers);
+  } finally {
+    if (timeoutHandle) {
+      clearTimeout(timeoutHandle);
+    }
+    cleanupAbort?.();
+  }
+}
+
+function shouldRecycleClientAfterToolError(error: unknown): boolean {
+  return isClosedClientError(error) || error instanceof MCPDeadlineError;
+}
+
 /**
  * Wrap MCP tools to transform their results to AI SDK format.
  * This ensures image content is properly converted to media type.
@@ -46,26 +123,34 @@ export function wrapMCPTools(
 ): Record<string, Tool> {
   const { onActivity, onClosed } = options ?? {};
   const wrapped: Record<string, Tool> = {};
-  for (const [name, tool] of Object.entries(tools)) {
+  for (const [toolName, tool] of Object.entries(tools)) {
     // Only wrap tools that have an execute function
     if (!tool.execute) {
-      wrapped[name] = tool;
+      wrapped[toolName] = tool;
       continue;
     }
 
     const originalExecute = tool.execute;
-    wrapped[name] = {
+    wrapped[toolName] = {
       ...tool,
-      execute: async (args: Parameters<typeof originalExecute>[0], options) => {
+      execute: async (args: Parameters<typeof originalExecute>[0], context) => {
         // Mark the MCP server set as active *before* execution, so failed tool
         // calls (including closed-client races) still count as activity.
         onActivity?.();
 
         try {
-          const result: unknown = await originalExecute(args, options);
+          const abortSignal =
+            context && typeof context === "object" && "abortSignal" in context
+              ? (context as { abortSignal?: AbortSignal }).abortSignal
+              : undefined;
+
+          const result: unknown = await runMCPToolWithDeadline(
+            () => Promise.resolve(originalExecute(args, context)) as Promise<unknown>,
+            { toolName, timeoutMs: MCP_TOOL_CALL_TIMEOUT_MS, signal: abortSignal }
+          );
           return transformMCPResult(result as MCPCallToolResult);
         } catch (error) {
-          if (isClosedClientError(error)) {
+          if (shouldRecycleClientAfterToolError(error)) {
             try {
               onClosed?.();
             } catch {
