@@ -80,6 +80,7 @@ export const CostsTab: AppStory = {
       setup={() => {
         localStorage.setItem(RIGHT_SIDEBAR_TAB_KEY, JSON.stringify("costs"));
         localStorage.setItem("costsTab:viewMode", JSON.stringify("session"));
+        localStorage.setItem("statsContainer:subTab", JSON.stringify("cost"));
         localStorage.setItem(RIGHT_SIDEBAR_WIDTH_KEY, "400");
         localStorage.removeItem(getRightSidebarLayoutKey("ws-costs"));
 
@@ -105,7 +106,7 @@ export const CostsTab: AppStory = {
 
     // Session usage is fetched async via WorkspaceStore; wait to avoid snapshot races.
     await waitFor(() => {
-      canvas.getByRole("tab", { name: /costs.*\$0\.56/i });
+      canvas.getByRole("tab", { name: /stats.*\$0\.56/i });
     });
   },
 };
@@ -121,6 +122,7 @@ export const CostsTabWithCacheCreate: AppStory = {
       setup={() => {
         localStorage.setItem(RIGHT_SIDEBAR_TAB_KEY, JSON.stringify("costs"));
         localStorage.setItem("costsTab:viewMode", JSON.stringify("session"));
+        localStorage.setItem("statsContainer:subTab", JSON.stringify("cost"));
         localStorage.setItem(RIGHT_SIDEBAR_WIDTH_KEY, "350");
         const modelUsage = {
           // Realistic Anthropic usage: heavy caching, cache create is expensive
@@ -164,9 +166,9 @@ export const CostsTabWithCacheCreate: AppStory = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
 
-    // Ensure we're on the Costs tab (layout state can persist across stories).
-    const costsTab = await canvas.findByRole("tab", { name: /^costs/i }, { timeout: 10_000 });
-    await userEvent.click(costsTab);
+    // Ensure we're on the Stats tab (layout state can persist across stories).
+    const statsTab = await canvas.findByRole("tab", { name: /^stats/i }, { timeout: 10_000 });
+    await userEvent.click(statsTab);
 
     // Wait for session usage to load + render.
     await waitFor(
@@ -211,7 +213,7 @@ export const ReviewTab: AppStory = {
 
     // Wait for session usage to land (avoid theme/mode snapshots diverging on timing).
     await waitFor(() => {
-      canvas.getByRole("tab", { name: /costs.*\$0\.42/i });
+      canvas.getByRole("tab", { name: /stats.*\$0\.42/i });
     });
 
     // Use findByRole (retry-capable) to handle transient DOM gaps between awaits.
@@ -379,16 +381,16 @@ export const ExplorerTabSelected: AppStory = {
 };
 
 /**
- * Stats tab when idle (no timing data) - shows placeholder message
+ * Stats tab (Timing sub-tab) when idle (no timing data) - shows placeholder message
  */
 export const StatsTabIdle: AppStory = {
   render: () => (
     <AppWithMocks
       setup={() => {
-        localStorage.setItem(RIGHT_SIDEBAR_TAB_KEY, JSON.stringify("stats"));
+        localStorage.setItem(RIGHT_SIDEBAR_TAB_KEY, JSON.stringify("costs"));
         localStorage.setItem(RIGHT_SIDEBAR_WIDTH_KEY, "400");
-        // Clear persisted layout to ensure stats tab appears in fresh default layout
-        localStorage.removeItem(getRightSidebarLayoutKey("ws-stats-idle"));
+        // Pre-select Timing sub-tab so it shows timing content
+        localStorage.setItem("statsContainer:subTab", JSON.stringify("timing"));
 
         const client = setupSimpleChatStory({
           workspaceId: "ws-stats-idle",
@@ -409,7 +411,7 @@ export const StatsTabIdle: AppStory = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
 
-    // Feature flags are async, so allow more time.
+    // The "Stats" tab (internal key "costs") is default active.
     const statsTab = await canvas.findByRole("tab", { name: /^stats/i });
     await userEvent.click(statsTab);
 
@@ -420,16 +422,16 @@ export const StatsTabIdle: AppStory = {
 };
 
 /**
- * Stats tab during active streaming - shows timing statistics
+ * Stats tab (Timing sub-tab) during active streaming - shows timing statistics
  */
 export const StatsTabStreaming: AppStory = {
   render: () => (
     <AppWithMocks
       setup={() => {
-        localStorage.setItem(RIGHT_SIDEBAR_TAB_KEY, JSON.stringify("stats"));
+        localStorage.setItem(RIGHT_SIDEBAR_TAB_KEY, JSON.stringify("costs"));
         localStorage.setItem(RIGHT_SIDEBAR_WIDTH_KEY, "400");
-        // Clear persisted layout to ensure stats tab appears in fresh default layout
-        localStorage.removeItem(getRightSidebarLayoutKey("ws-stats-streaming"));
+        // Pre-select Timing sub-tab so it shows timing content
+        localStorage.setItem("statsContainer:subTab", JSON.stringify("timing"));
 
         const client = setupStreamingChatStory({
           workspaceId: "ws-stats-streaming",
@@ -451,7 +453,7 @@ export const StatsTabStreaming: AppStory = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
 
-    // Feature flags are async; wait for Stats tab to appear, then select it.
+    // The "Stats" tab (internal key "costs") should already be active.
     const statsTab = await canvas.findByRole("tab", { name: /^stats/i });
     await userEvent.click(statsTab);
 
@@ -459,9 +461,10 @@ export const StatsTabStreaming: AppStory = {
       canvas.getByRole("tab", { name: /^stats/i, selected: true });
     });
 
-    // Verify timing header is shown (with pulsing active indicator)
+    // Verify timing section is rendered (use testid since "Timing" appears in both
+    // the sub-tab toggle and the section header)
     await waitFor(() => {
-      canvas.getByText(/timing/i);
+      canvas.getByTestId("timing-section");
     });
 
     // Verify timing table components are displayed
@@ -1207,7 +1210,6 @@ export const ManyTabsWrap: AppStory = {
               "costs",
               "review",
               "explorer",
-              "stats",
               ...Array.from(
                 { length: 12 },
                 (_v, i) => `file:src/components/ThisIsAReallyLongFileName${i + 1}.tsx`
@@ -1260,6 +1262,7 @@ export const CostsTabCompactionModelWarning: AppStory = {
       setup={() => {
         localStorage.setItem(RIGHT_SIDEBAR_TAB_KEY, JSON.stringify("costs"));
         localStorage.setItem("costsTab:viewMode", JSON.stringify("session"));
+        localStorage.setItem("statsContainer:subTab", JSON.stringify("cost"));
         localStorage.setItem(RIGHT_SIDEBAR_WIDTH_KEY, "400");
         localStorage.removeItem(getRightSidebarLayoutKey("ws-compact-warning"));
 
