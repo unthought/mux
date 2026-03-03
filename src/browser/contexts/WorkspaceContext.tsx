@@ -10,6 +10,7 @@ import {
   type ReactNode,
   type SetStateAction,
 } from "react";
+import { useLocation } from "react-router-dom";
 import type { FrontendWorkspaceMetadata } from "@/common/types/workspace";
 import type { ThinkingLevel } from "@/common/types/thinking";
 import type { WorkspaceSelection } from "@/browser/components/ProjectSidebar/ProjectSidebar";
@@ -36,9 +37,11 @@ import {
   GATEWAY_ENABLED_KEY,
   GATEWAY_MODELS_KEY,
   HIDDEN_MODELS_KEY,
+  LAUNCH_BEHAVIOR_KEY,
   RUNTIME_ENABLEMENT_KEY,
   SELECTED_WORKSPACE_KEY,
   WORKSPACE_DRAFTS_BY_PROJECT_KEY,
+  type LaunchBehavior,
 } from "@/common/constants/storage";
 import { useAPI } from "@/browser/contexts/API";
 import { setWorkspaceModelWithOrigin } from "@/browser/utils/modelChange";
@@ -544,6 +547,7 @@ export function WorkspaceProvider(props: WorkspaceProviderProps) {
     pendingSectionId,
     pendingDraftId,
   } = useRouter();
+  const location = useLocation();
 
   const workspaceStore = useWorkspaceStoreRaw();
 
@@ -786,6 +790,27 @@ export function WorkspaceProvider(props: WorkspaceProviderProps) {
   // any async creation callbacks decide whether to auto-navigate.
   const selectedWorkspaceRef = useRef(selectedWorkspace);
   selectedWorkspaceRef.current = selectedWorkspace;
+  // Sticky in-memory flag to preserve explicit Home navigation intent.
+  // Prevents server launch-project auto-selection from bouncing users away from /.
+  const hasUserNavigatedHomeRef = useRef(false);
+  const hasProcessedInitialLocationRef = useRef(false);
+
+  const hasAutoCreatedRef = useRef(false);
+  const hasCheckedStaleRouteRef = useRef(false);
+
+  useEffect(() => {
+    // Skip initial mount so cold startup at "/" can still honor launch-project.
+    if (!hasProcessedInitialLocationRef.current) {
+      hasProcessedInitialLocationRef.current = true;
+      return;
+    }
+
+    // Browser history can land on / without going through setSelectedWorkspace(null).
+    // Mark that as explicit Home intent so launch-project doesn't bounce the user away.
+    if (location.pathname === "/") {
+      hasUserNavigatedHomeRef.current = true;
+    }
+  }, [location.pathname]);
 
   // setSelectedWorkspace navigates to the workspace URL (or clears if null)
   const setSelectedWorkspace = useCallback(
@@ -799,10 +824,12 @@ export function WorkspaceProvider(props: WorkspaceProviderProps) {
       selectedWorkspaceRef.current = newValue;
 
       if (newValue) {
+        hasUserNavigatedHomeRef.current = false;
         navigateToWorkspace(newValue.workspaceId);
         // Persist to localStorage for next session
         updatePersistedState(SELECTED_WORKSPACE_KEY, newValue);
       } else {
+        hasUserNavigatedHomeRef.current = true;
         navigateToHome();
         updatePersistedState(SELECTED_WORKSPACE_KEY, null);
       }
@@ -830,34 +857,6 @@ export function WorkspaceProvider(props: WorkspaceProviderProps) {
   useEffect(() => {
     workspaceMetadataRef.current = workspaceMetadata;
   }, [workspaceMetadata]);
-
-  const initialWorkspaceResolvedRef = useRef(false);
-
-  useEffect(() => {
-    if (loading) return;
-    if (!currentWorkspaceId) return;
-
-    if (currentWorkspaceId === MUX_HELP_CHAT_WORKSPACE_ID) {
-      initialWorkspaceResolvedRef.current = true;
-      return;
-    }
-
-    if (workspaceMetadata.has(currentWorkspaceId)) {
-      initialWorkspaceResolvedRef.current = true;
-      return;
-    }
-
-    // Only auto-redirect on initial restore so we don't fight archive/delete navigation.
-    if (initialWorkspaceResolvedRef.current) return;
-
-    const muxChatMetadata = workspaceMetadata.get(MUX_HELP_CHAT_WORKSPACE_ID);
-    if (!muxChatMetadata) return;
-
-    // If the last-restored workspace no longer exists, recover to mux-chat instead
-    // of leaving the user on a dead-end "Workspace not found" screen.
-    initialWorkspaceResolvedRef.current = true;
-    setSelectedWorkspace(toWorkspaceSelection(muxChatMetadata));
-  }, [currentWorkspaceId, loading, setSelectedWorkspace, workspaceMetadata]);
 
   const loadWorkspaceMetadata = useCallback(async () => {
     if (!api) return false; // Return false to indicate metadata wasn't loaded
@@ -910,6 +909,10 @@ export function WorkspaceProvider(props: WorkspaceProviderProps) {
 
     // Skip if we already have a selected workspace (from localStorage or URL hash)
     if (selectedWorkspace) return;
+
+    // If the user explicitly went Home, preserve that intent instead of
+    // immediately re-selecting a launch-project workspace.
+    if (hasUserNavigatedHomeRef.current) return;
 
     // Skip if user is on the settings or analytics page — navigating to
     // /settings/:section or /analytics clears the workspace from the URL,
@@ -967,6 +970,28 @@ export function WorkspaceProvider(props: WorkspaceProviderProps) {
     workspaceMetadata,
     setSelectedWorkspace,
   ]);
+
+  // Self-heal: if the initial route targets a workspace that no longer exists
+  // in metadata (e.g., deleted since last session), clear the stale route and
+  // persisted selection so the user isn't stuck in a restore loop.
+  useEffect(() => {
+    if (loading) return;
+    if (hasCheckedStaleRouteRef.current) return;
+    hasCheckedStaleRouteRef.current = true;
+
+    if (!currentWorkspaceId) return;
+    if (workspaceMetadata.has(currentWorkspaceId)) return;
+
+    // mux-chat registers asynchronously after initial load — don't treat it as stale.
+    if (currentWorkspaceId === MUX_HELP_CHAT_WORKSPACE_ID) return;
+
+    // If metadata is empty, a transient backend failure may have caused
+    // workspace.list to return nothing — don't clear a potentially valid route.
+    if (workspaceMetadata.size === 0) return;
+
+    // Workspace ID from initial route doesn't exist — clear stale state.
+    setSelectedWorkspace(null);
+  }, [loading, currentWorkspaceId, workspaceMetadata, setSelectedWorkspace]);
 
   // Subscribe to metadata updates (for create/rename/delete operations)
   useEffect(() => {
@@ -1468,6 +1493,64 @@ export function WorkspaceProvider(props: WorkspaceProviderProps) {
     },
     [navigateToProject, setWorkspaceDraftsByProjectState]
   );
+
+  useEffect(() => {
+    if (loading || hasAutoCreatedRef.current) return;
+    if (selectedWorkspace) return;
+
+    // Preserve explicit Home navigation intent.
+    if (hasUserNavigatedHomeRef.current) return;
+
+    // Don't auto-create while the user is on global routes.
+    if (currentSettingsSection || isAnalyticsOpen) return;
+
+    // Skip if user is in the middle of creating a workspace.
+    if (pendingNewWorkspaceProject) return;
+
+    const behavior = readPersistedState<LaunchBehavior>(LAUNCH_BEHAVIOR_KEY, "dashboard");
+    if (behavior !== "new-chat") return;
+
+    let cancelled = false;
+
+    const autoCreate = async () => {
+      // In server mode with --add-project, defer startup routing to the launch-project effect.
+      try {
+        const launchProject = await api?.server.getLaunchProject(undefined);
+        if (cancelled || launchProject) return;
+      } catch {
+        // Ignore backend capability errors and continue with local auto-create fallback.
+      }
+
+      if (cancelled) return;
+
+      hasAutoCreatedRef.current = true;
+
+      const workspaceRecency = workspaceStore.getWorkspaceRecency();
+      const recentWorkspace = [...workspaceMetadata.values()]
+        .filter((workspace) => workspace.projectPath && workspace.id !== MUX_HELP_CHAT_WORKSPACE_ID)
+        .sort((a, b) => (workspaceRecency[b.id] ?? 0) - (workspaceRecency[a.id] ?? 0))[0];
+
+      if (!recentWorkspace) return;
+
+      createWorkspaceDraft(recentWorkspace.projectPath);
+    };
+
+    void autoCreate();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    api,
+    loading,
+    selectedWorkspace,
+    currentSettingsSection,
+    isAnalyticsOpen,
+    pendingNewWorkspaceProject,
+    workspaceMetadata,
+    workspaceStore,
+    createWorkspaceDraft,
+  ]);
 
   const openWorkspaceDraft = useCallback(
     (projectPath: string, draftId: string, sectionId?: string | null) => {

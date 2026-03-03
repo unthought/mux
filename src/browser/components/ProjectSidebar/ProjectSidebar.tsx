@@ -454,7 +454,6 @@ const ProjectSidebarInner: React.FC<ProjectSidebarProps> = ({
   // Get project state and operations from context
   const {
     userProjects,
-    systemProjectPath,
     openProjectCreateModal: onAddProject,
     removeProject: onRemoveProject,
     createSection,
@@ -588,6 +587,16 @@ const ProjectSidebarInner: React.FC<ProjectSidebarProps> = ({
       });
     }
   }, [handleSelectWorkspace, refreshWorkspaceMetadata, workspaceStore]);
+
+  const handleGoHome = useCallback(() => {
+    // Selecting null delegates to WorkspaceContext's home-navigation + selection reset flow.
+    onSelectWorkspace(null);
+    // Close sidebar on mobile
+    if (window.innerWidth <= MOBILE_BREAKPOINT && !collapsed) {
+      persistMobileSidebarScrollTop(mobileScrollTopRef.current);
+      onToggleCollapsed();
+    }
+  }, [onSelectWorkspace, collapsed, onToggleCollapsed, persistMobileSidebarScrollTop]);
   // Workspace-specific subscriptions moved to WorkspaceListItem component
 
   // Store as array in localStorage, convert to Set for usage
@@ -914,6 +923,11 @@ const ProjectSidebarInner: React.FC<ProjectSidebarProps> = ({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [selectedWorkspace, handleAddWorkspace, handleArchiveWorkspace]);
 
+  // Chat-with-Mux workspace registration is async at startup. Avoid mounting
+  // mux-chat header widgets until metadata exists so their hooks don't assert.
+  const muxChatWorkspaceExists =
+    workspaceStore.getWorkspaceMetadata(MUX_HELP_CHAT_WORKSPACE_ID) !== undefined;
+
   return (
     <TitleEditProvider onUpdateTitle={onUpdateTitle}>
       <SidebarTitleEditKeybinds
@@ -939,13 +953,13 @@ const ProjectSidebarInner: React.FC<ProjectSidebarProps> = ({
               <div className="border-dark flex items-center justify-between border-b py-3 pr-3 pl-4">
                 <div className="flex min-w-0 items-center gap-2">
                   <button
-                    onClick={handleOpenMuxChat}
+                    onClick={handleGoHome}
                     className="shrink-0 cursor-pointer border-none bg-transparent p-0"
-                    aria-label="Open Chat with Mux"
+                    aria-label="Home"
                   >
                     <MuxLogo className="h-5 w-[44px]" aria-hidden="true" />
                   </button>
-                  {systemProjectPath && (
+                  {muxChatWorkspaceExists && (
                     <>
                       <MuxChatHelpButton
                         onClick={handleOpenMuxChat}
