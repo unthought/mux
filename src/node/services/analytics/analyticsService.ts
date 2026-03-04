@@ -19,6 +19,7 @@ import type {
 } from "@/common/orpc/schemas/analytics";
 import type { SavedQuery } from "@/common/types/savedQueries";
 import { getModelProvider } from "@/common/utils/ai/models";
+import { ensurePrivateDir } from "@/node/utils/fs";
 import type { Config } from "@/node/config";
 import { getErrorMessage } from "@/common/utils/errors";
 import { PlatformPaths } from "@/common/utils/paths";
@@ -327,7 +328,7 @@ export class AnalyticsService {
     assert(!this.isDisposed, "Analytics worker cannot start after service disposal");
 
     const dbDir = path.join(this.config.rootDir, "analytics");
-    await fs.mkdir(dbDir, { recursive: true });
+    await ensurePrivateDir(dbDir);
 
     if (this.isDisposed) {
       throw new Error("Analytics worker start aborted because service is disposing");
