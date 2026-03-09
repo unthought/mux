@@ -710,7 +710,8 @@ export class TaskService {
 
     // Restart-safety for git patch artifacts:
     // - If mux crashed mid-generation, patch artifacts can be left "pending".
-    // - Reported tasks are auto-deleted once they're leaves; defer deletion while patches are pending.
+    // - Reported tasks remain in config and keep their runtime on disk so completed sub-agents
+    //   stay visible/selectable in the sidebar.
     const reportedTasks = this.listAgentTaskWorkspaces(config).filter(
       (t) => t.taskStatus === "reported" && typeof t.id === "string" && t.id.length > 0
     );
@@ -732,7 +733,7 @@ export class TaskService {
       }
     }
 
-    // Best-effort cleanup of reported leaf tasks (will no-op when patch artifacts are pending).
+    // Best-effort reported-task ancestor recheck after restart.
     for (const task of reportedTasks) {
       if (!task.id) continue;
       await this.cleanupReportedLeafTask(task.id);
@@ -2083,13 +2084,22 @@ export class TaskService {
   }
 
   /**
-   * Topology predicate: does this workspace still have child agent-task nodes in config?
-   * Unlike hasActiveDescendantAgentTasks (which checks runtime activity for scheduling),
-   * this checks structural tree shape — any child node blocks parent deletion regardless
-   * of its status.
+   * Topology predicate for reported-task cleanup: does this workspace still have child agent
+   * tasks that are not reported yet?
+   *
+   * Reported children should not block ancestor rechecks. Once every child has reported, the
+   * cleanup walk can continue upward and evaluate that ancestor as a reported leaf.
    */
-  private hasChildAgentTasks(index: AgentTaskIndex, workspaceId: string): boolean {
-    return (index.childrenByParent.get(workspaceId)?.length ?? 0) > 0;
+  private hasNonReportedChildAgentTasks(index: AgentTaskIndex, workspaceId: string): boolean {
+    const childIds = index.childrenByParent.get(workspaceId) ?? [];
+    for (const childId of childIds) {
+      const childStatus: AgentTaskStatus = index.byId.get(childId)?.taskStatus ?? "running";
+      if (childStatus !== "reported") {
+        return true;
+      }
+    }
+
+    return false;
   }
 
   private getTaskDepth(
@@ -3579,28 +3589,30 @@ export class TaskService {
     }
 
     if (this.aiService.isStreaming(workspaceId)) {
-      log.debug("cleanupReportedLeafTask: deferring auto-delete; stream still active", {
+      log.debug("cleanupReportedLeafTask: deferring reported-task retention; stream still active", {
         workspaceId,
         parentWorkspaceId,
       });
       return { ok: false, reason: "still_streaming" };
     }
 
-    // Topology gate: a reported task can only be cleaned up when it is a structural leaf
-    // (has no child agent tasks in config). This is status-agnostic — even reported children
-    // block parent deletion, ensuring artifact rollup always targets an existing parent path.
+    // Reported-task topology gate: children only block ancestor walk-up while they are still
+    // active. Once all children are reported, this workspace is treated as a reported leaf.
     const index = this.buildAgentTaskIndex(config);
-    if (this.hasChildAgentTasks(index, workspaceId)) {
-      return { ok: false, reason: "has_child_tasks" };
+    if (this.hasNonReportedChildAgentTasks(index, workspaceId)) {
+      return { ok: false, reason: "has_non_reported_child_tasks" };
     }
 
     const parentSessionDir = this.config.getSessionDir(parentWorkspaceId);
     const patchArtifact = await readSubagentGitPatchArtifact(parentSessionDir, workspaceId);
     if (patchArtifact?.status === "pending") {
-      log.debug("cleanupReportedLeafTask: deferring auto-delete; patch artifact pending", {
-        workspaceId,
-        parentWorkspaceId,
-      });
+      log.debug(
+        "cleanupReportedLeafTask: deferring reported-task retention; patch artifact pending",
+        {
+          workspaceId,
+          parentWorkspaceId,
+        }
+      );
       return { ok: false, reason: "patch_pending" };
     }
 
@@ -3610,9 +3622,9 @@ export class TaskService {
   private async cleanupReportedLeafTask(workspaceId: string): Promise<void> {
     assert(workspaceId.length > 0, "cleanupReportedLeafTask: workspaceId must be non-empty");
 
-    // Lineage reduction: each iteration removes exactly one leaf node, then re-evaluates
-    // the parent on fresh config. The structural-leaf gate in canCleanupReportedTask ensures
-    // parents are only removed after all children are gone.
+    // Keep reported task metadata + runtime intact so completed tasks remain visible and
+    // selectable in the sidebar. We still walk ancestors so reported parents get re-evaluated
+    // once every descendant has reported.
     let currentWorkspaceId = workspaceId;
     const visited = new Set<string>();
     for (let depth = 0; depth < 32; depth++) {
@@ -3626,15 +3638,6 @@ export class TaskService {
 
       const cleanupEligibility = await this.canCleanupReportedTask(currentWorkspaceId);
       if (!cleanupEligibility.ok) {
-        return;
-      }
-
-      const removeResult = await this.workspaceService.remove(currentWorkspaceId, true);
-      if (!removeResult.success) {
-        log.error("Failed to auto-delete reported task workspace", {
-          workspaceId: currentWorkspaceId,
-          error: removeResult.error,
-        });
         return;
       }
 

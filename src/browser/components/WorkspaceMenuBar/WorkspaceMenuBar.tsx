@@ -277,7 +277,7 @@ export const WorkspaceMenuBar: React.FC<WorkspaceMenuBarProps> = ({
     return () => window.removeEventListener("keydown", handler);
   }, []);
 
-  // Keybind for sharing transcript — lives here (not WorkspaceListItem) so it
+  // Keybind for sharing transcript — lives here (not AgentListItem) so it
   // works even when the left sidebar is collapsed and list items are unmounted.
   useEffect(() => {
     if (isMuxHelpChat || linkSharingEnabled !== true) return;

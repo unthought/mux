@@ -3828,7 +3828,7 @@ describe("TaskService", () => {
       expect.objectContaining({ workspaceId: childId })
     );
 
-    expect(remove).toHaveBeenCalled();
+    expect(remove).not.toHaveBeenCalled();
     expect(sendMessage).toHaveBeenCalledWith(
       parentId,
       expect.stringContaining("sub-agent task(s) have completed"),
@@ -3972,9 +3972,7 @@ describe("TaskService", () => {
       if (artifact?.status === "ready") {
         try {
           await fsPromises.stat(patchPath);
-          if (remove.mock.calls.length > 0) {
-            break;
-          }
+          break;
         } catch {
           // Keep polling until the patch file exists.
         }
@@ -3986,7 +3984,7 @@ describe("TaskService", () => {
 
       if (Date.now() - start > 20_000) {
         throw new Error(
-          `Timed out waiting for patch artifact generation (removeCalled=${remove.mock.calls.length > 0}, lastArtifact=${JSON.stringify(lastArtifact)})`
+          `Timed out waiting for patch artifact generation (lastArtifact=${JSON.stringify(lastArtifact)})`
         );
       }
 
@@ -3997,7 +3995,7 @@ describe("TaskService", () => {
     expect(artifact?.status).toBe("ready");
 
     await fsPromises.stat(patchPath);
-    expect(remove).toHaveBeenCalled();
+    expect(remove).not.toHaveBeenCalled();
   }, 20_000);
 
   test("agent_report generates git format-patch artifact for exec-derived custom tasks", async () => {
@@ -4143,9 +4141,7 @@ describe("TaskService", () => {
       if (artifact?.status === "ready") {
         try {
           await fsPromises.stat(patchPath);
-          if (remove.mock.calls.length > 0) {
-            break;
-          }
+          break;
         } catch {
           // Keep polling until the patch file exists.
         }
@@ -4157,7 +4153,7 @@ describe("TaskService", () => {
 
       if (Date.now() - start > 20_000) {
         throw new Error(
-          `Timed out waiting for patch artifact generation (removeCalled=${remove.mock.calls.length > 0}, lastArtifact=${JSON.stringify(lastArtifact)})`
+          `Timed out waiting for patch artifact generation (lastArtifact=${JSON.stringify(lastArtifact)})`
         );
       }
 
@@ -4168,7 +4164,7 @@ describe("TaskService", () => {
     expect(artifact?.status).toBe("ready");
 
     await fsPromises.stat(patchPath);
-    expect(remove).toHaveBeenCalled();
+    expect(remove).not.toHaveBeenCalled();
   }, 20_000);
   test("agent_report updates queued/running task tool output in parent history", async () => {
     const config = await createTestConfig(rootDir);
@@ -4294,7 +4290,7 @@ describe("TaskService", () => {
       expect(text).toContain(childId);
     }
 
-    expect(remove).toHaveBeenCalled();
+    expect(remove).not.toHaveBeenCalled();
     expect(sendMessageMock).toHaveBeenCalledWith(
       parentId,
       expect.stringContaining("sub-agent task(s) have completed"),
@@ -4423,7 +4419,7 @@ describe("TaskService", () => {
       .find((w) => w.id === childId);
     expect(ws?.taskStatus).toBe("reported");
 
-    expect(remove).toHaveBeenCalled();
+    expect(remove).not.toHaveBeenCalled();
     // Parent auto-resume fires after the child report is finalized at stream-end.
     expect(sendMessage).toHaveBeenCalled();
   });
@@ -4713,7 +4709,7 @@ describe("TaskService", () => {
       .find((w) => w.id === childId);
     expect(ws?.taskStatus).toBe("reported");
 
-    expect(remove).toHaveBeenCalled();
+    expect(remove).not.toHaveBeenCalled();
     // Parent auto-resume now uses sendMessage instead of resumeStream
     expect(sendMessage).toHaveBeenCalledWith(
       parentId,
@@ -5261,7 +5257,7 @@ describe("TaskService", () => {
     expect(childEntry?.runtimeConfig?.type).toBe("worktree");
   }, 20_000);
 
-  test("sibling reported task blocks parent deletion during cleanup", async () => {
+  test("reported leaf cleanup retains sibling and parent metadata in config", async () => {
     const config = await createTestConfig(rootDir);
 
     const projectPath = path.join(rootDir, "repo");
@@ -5311,38 +5307,37 @@ describe("TaskService", () => {
 
     const isStreaming = mock(() => false);
     const { aiService } = createAIServiceMocks(config, { isStreaming });
-    const remove = mock(async (workspaceId: string): Promise<Result<void>> => {
-      await config.removeWorkspace(workspaceId);
-      return Ok(undefined);
-    });
-    const { workspaceService } = createWorkspaceServiceMocks({ remove });
-    const { taskService } = createTaskServiceHarness(config, { aiService, workspaceService });
+    const { taskService } = createTaskServiceHarness(config, { aiService });
 
     const internal = taskService as unknown as {
-      handleStreamEnd: (event: StreamEndEvent) => Promise<void>;
+      cleanupReportedLeafTask: (workspaceId: string) => Promise<void>;
     };
 
-    await internal.handleStreamEnd({
-      type: "stream-end",
-      workspaceId: childTaskAId,
-      messageId: "assistant-child-a",
-      metadata: { model: "openai:gpt-4o-mini" },
-      parts: [],
-    });
+    const deleteWorkspaceSpy = spyOn(WorktreeRuntime.prototype, "deleteWorkspace");
+    try {
+      await internal.cleanupReportedLeafTask(childTaskAId);
+      expect(deleteWorkspaceSpy).not.toHaveBeenCalled();
+    } finally {
+      deleteWorkspaceSpy.mockRestore();
+    }
 
-    expect(remove).toHaveBeenCalledWith(childTaskAId, true);
-
-    const removedWorkspaceIds = (
-      remove as unknown as { mock: { calls: Array<[string, boolean]> } }
-    ).mock.calls.map((call) => call[0]);
-    expect(removedWorkspaceIds).not.toContain(parentTaskId);
+    const postCfg = config.loadConfigOrDefault();
+    const remainingWorkspaceIds = new Set(
+      Array.from(postCfg.projects.values())
+        .flatMap((project) => project.workspaces)
+        .map((workspace) => workspace.id)
+    );
+    expect(remainingWorkspaceIds.has(parentTaskId)).toBe(true);
+    expect(remainingWorkspaceIds.has(childTaskAId)).toBe(true);
+    expect(remainingWorkspaceIds.has(childTaskBId)).toBe(true);
   });
 
-  test("parent deletes only after all sibling children are cleaned up", async () => {
+  test("reported sibling cleanup walks up and rechecks reported ancestors", async () => {
     const config = await createTestConfig(rootDir);
 
     const projectPath = path.join(rootDir, "repo");
     const rootWorkspaceId = "root-111";
+    const grandparentTaskId = "grandparent-000";
     const parentTaskId = "parent-222";
     const childTaskAId = "child-a-333";
     const childTaskBId = "child-b-444";
@@ -5356,10 +5351,18 @@ describe("TaskService", () => {
             workspaces: [
               { path: path.join(projectPath, "root"), id: rootWorkspaceId, name: "root" },
               {
+                path: path.join(projectPath, "grandparent-task"),
+                id: grandparentTaskId,
+                name: "agent_exec_grandparent",
+                parentWorkspaceId: rootWorkspaceId,
+                agentType: "exec",
+                taskStatus: "reported",
+              },
+              {
                 path: path.join(projectPath, "parent-task"),
                 id: parentTaskId,
                 name: "agent_exec_parent",
-                parentWorkspaceId: rootWorkspaceId,
+                parentWorkspaceId: grandparentTaskId,
                 agentType: "exec",
                 taskStatus: "reported",
               },
@@ -5388,37 +5391,31 @@ describe("TaskService", () => {
 
     const isStreaming = mock(() => false);
     const { aiService } = createAIServiceMocks(config, { isStreaming });
-    const remove = mock(async (workspaceId: string): Promise<Result<void>> => {
-      await config.removeWorkspace(workspaceId);
-      return Ok(undefined);
-    });
-    const { workspaceService } = createWorkspaceServiceMocks({ remove });
-    const { taskService } = createTaskServiceHarness(config, { aiService, workspaceService });
+    const { taskService } = createTaskServiceHarness(config, { aiService });
 
     const internal = taskService as unknown as {
-      handleStreamEnd: (event: StreamEndEvent) => Promise<void>;
+      cleanupReportedLeafTask: (workspaceId: string) => Promise<void>;
     };
 
-    await internal.handleStreamEnd({
-      type: "stream-end",
-      workspaceId: childTaskAId,
-      messageId: "assistant-child-a",
-      metadata: { model: "openai:gpt-4o-mini" },
-      parts: [],
-    });
+    await internal.cleanupReportedLeafTask(childTaskAId);
 
-    await internal.handleStreamEnd({
-      type: "stream-end",
-      workspaceId: childTaskBId,
-      messageId: "assistant-child-b",
-      metadata: { model: "openai:gpt-4o-mini" },
-      parts: [],
-    });
+    const isStreamingCalls = (isStreaming as unknown as { mock: { calls: Array<[string]> } }).mock
+      .calls;
+    const checkedWorkspaceIds = new Set(isStreamingCalls.map((call) => call[0]));
+    expect(checkedWorkspaceIds.has(childTaskAId)).toBe(true);
+    expect(checkedWorkspaceIds.has(parentTaskId)).toBe(true);
+    expect(checkedWorkspaceIds.has(grandparentTaskId)).toBe(true);
 
-    expect(remove).toHaveBeenCalledTimes(3);
-    expect(remove).toHaveBeenNthCalledWith(1, childTaskAId, true);
-    expect(remove).toHaveBeenNthCalledWith(2, childTaskBId, true);
-    expect(remove).toHaveBeenNthCalledWith(3, parentTaskId, true);
+    const postCfg = config.loadConfigOrDefault();
+    const reportedWorkspacesById = new Map(
+      Array.from(postCfg.projects.values())
+        .flatMap((project) => project.workspaces)
+        .map((workspace) => [workspace.id, workspace.taskStatus])
+    );
+    expect(reportedWorkspacesById.get(grandparentTaskId)).toBe("reported");
+    expect(reportedWorkspacesById.get(parentTaskId)).toBe("reported");
+    expect(reportedWorkspacesById.get(childTaskAId)).toBe("reported");
+    expect(reportedWorkspacesById.get(childTaskBId)).toBe("reported");
   });
 
   describe("parent auto-resume flood protection", () => {
