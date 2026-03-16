@@ -1584,6 +1584,10 @@ export class StreamingMessageAggregator {
     }
   }
 
+  clearPendingStreamStart(): void {
+    this.setPendingStreamStartTime(null);
+  }
+
   clear(): void {
     this.messages.clear();
     this.activeStreams.clear();

@@ -1645,9 +1645,12 @@ export class WorkspaceStore {
         aggregatorRecency === null
           ? (activity?.recency ?? null)
           : Math.max(aggregatorRecency, activity?.recency ?? aggregatorRecency);
-      // Treat the backend lifecycle as authoritative, with pendingStreamStartTime kept only as a
-      // cosmetic fallback for transcript-only crash-recovery sessions that lack any lifecycle.
+      // Treat the backend lifecycle as authoritative, but keep any optimistic
+      // pre-stream "starting" state scoped to the active, caught-up workspace.
+      // Inactive or replaying workspaces should derive status from authoritative
+      // activity instead of a sticky local pending-start timestamp.
       const isStreamStarting =
+        useAggregatorState &&
         (streamLifecycle?.phase === "preparing" ||
           (!hasAuthoritativeStreamLifecycle && pendingStreamStartTime !== null)) &&
         !canInterrupt;
@@ -2463,6 +2466,7 @@ export class WorkspaceStore {
       // activity confirms streaming stopped, clear stale stream contexts so they
       // cannot leak compaction metadata into future completion callbacks.
       this.aggregators.get(workspaceId)?.clearActiveStreams();
+      this.aggregators.get(workspaceId)?.clearPendingStreamStart();
     }
 
     if (snapshot?.streaming !== true) {
@@ -3555,6 +3559,11 @@ export class WorkspaceStore {
         streamContextMismatched
       ) {
         aggregator.clearActiveStreams();
+      }
+      // When server confirms no active stream, clear optimistic pending-start state
+      // so the UI doesn't remain stuck in "starting..." after reconnect.
+      if (serverActiveStreamMessageId === undefined) {
+        aggregator.clearPendingStreamStart();
       }
 
       if (replay === "full") {
