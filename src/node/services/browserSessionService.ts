@@ -5,10 +5,13 @@ import type {
   BrowserSession,
   BrowserSessionEvent,
 } from "@/common/types/browserSession";
+import { getMuxBrowserSessionId } from "@/common/utils/browserSession";
 import {
   BrowserSessionBackend,
+  closeAgentBrowserSession,
   type BrowserSessionBackendOptions,
 } from "@/node/services/browserSessionBackend";
+import { log } from "@/node/services/log";
 
 const MAX_RECENT_ACTIONS = 50;
 
@@ -124,10 +127,24 @@ export class BrowserSessionService extends EventEmitter {
       workspaceId.trim().length > 0,
       "BrowserSessionService.stopSession requires a workspaceId"
     );
+
     const backend = this.activeBackends.get(workspaceId);
     if (backend) {
       await backend.stop();
+    } else {
+      // Only attempt standalone close for untracked CLI-started sessions.
+      // When a tracked backend exists, backend.stop() already closes the session
+      // via the same CLI command, so a second close would be redundant and would
+      // double the timeout window in failure cases.
+      const sessionId = getMuxBrowserSessionId(workspaceId);
+      const result = await closeAgentBrowserSession(sessionId);
+      if (!result.success) {
+        log.warn(`Failed to close browser session ${sessionId}: ${result.error ?? "unknown"}`);
+      }
     }
+
+    this.recentActions.delete(workspaceId);
+    this.startPromises.delete(workspaceId);
   }
 
   getRecentActions(workspaceId: string): BrowserAction[] {

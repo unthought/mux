@@ -113,6 +113,10 @@ function shellQuotePosix(value: string): string {
   return `'${value.replaceAll("'", `'\\''`)}'`;
 }
 
+function shellQuoteCmd(value: string): string {
+  return `"${value.replaceAll('"', '""')}"`;
+}
+
 export function rewriteAsarPath(inputPath: string): string {
   return inputPath.replace(/app\.asar(?=[\\/])/, "app.asar.unpacked");
 }
@@ -156,8 +160,8 @@ function prependPathOnce(dir: string, env: NodeJS.ProcessEnv): void {
 /**
  * Install the vendored agent-browser wrapper into mux-managed bin dir and ensure
  * the current process PATH can discover it. Server-mode mux needs this too so
- * bash tools resolve `agent-browser` instead of falling back to `bunx`, which
- * bypasses MUX_BROWSER_SESSION and leaves the Browser tab disconnected.
+ * bash tools resolve the vendored `agent-browser` binary instead of falling back
+ * to a global install or `bunx`.
  */
 export function materializeVendoredAgentBrowserWrapper(): void {
   const { dir, posixContent, windowsContent } = generateAgentBrowserWrapper();
@@ -189,37 +193,75 @@ export function generateAgentBrowserWrapper(): {
     "Vendored agent-browser wrapper target must be an absolute path"
   );
 
+  const quotedPosixBinaryPath = shellQuotePosix(binaryPath);
+  const quotedWindowsBinaryPath = shellQuoteCmd(binaryPath);
+
+  // agent-browser gives CLI flags higher precedence than environment variables,
+  // so the wrapper must inject the workspace session via --session and strip any
+  // user-provided session flag to keep Browser tab state attached to one session.
   return {
     dir: getVendoredBinDir(),
-    posixContent:
-      `#!/bin/sh\n` +
-      `mux_has_session_arg=0\n` +
-      `for mux_arg in "$@"; do\n` +
-      `  case "$mux_arg" in\n` +
-      `    --session|--session=*)\n` +
-      `      mux_has_session_arg=1\n` +
-      `      break\n` +
-      `      ;;\n` +
-      `  esac\n` +
-      `done\n` +
-      `if [ "$mux_has_session_arg" -eq 0 ] && [ -n "\${MUX_BROWSER_SESSION:-}" ]; then\n` +
-      `  exec ${shellQuotePosix(binaryPath)} --session "$MUX_BROWSER_SESSION" "$@"\n` +
-      `fi\n` +
-      `exec ${shellQuotePosix(binaryPath)} "$@"\n`,
-    windowsContent:
-      `@echo off\r\n` +
-      `setlocal EnableDelayedExpansion\r\n` +
-      `set "MUX_HAS_SESSION_ARG=0"\r\n` +
-      `for %%A in (%*) do (\r\n` +
-      `  set "MUX_CURRENT_ARG=%%~A"\r\n` +
-      `  if /I "!MUX_CURRENT_ARG!"=="--session" set "MUX_HAS_SESSION_ARG=1"\r\n` +
-      `  if /I "!MUX_CURRENT_ARG:~0,10!"=="--session=" set "MUX_HAS_SESSION_ARG=1"\r\n` +
-      `)\r\n` +
-      `if not "%MUX_BROWSER_SESSION%"=="" if "!MUX_HAS_SESSION_ARG!"=="0" (\r\n` +
-      `  "${binaryPath.replaceAll('"', '""')}" --session "%MUX_BROWSER_SESSION%" %*\r\n` +
-      `  exit /B !ERRORLEVEL!\r\n` +
-      `)\r\n` +
-      `"${binaryPath.replaceAll('"', '""')}" %*\r\n` +
-      `exit /B !ERRORLEVEL!\r\n`,
+    posixContent: [
+      "#!/bin/sh",
+      "# When AGENT_BROWSER_SESSION is set, force all agent-browser invocations to use",
+      "# the workspace's deterministic session ID. We inject via the --session CLI flag",
+      "# (which takes precedence over env vars) and strip any user-provided --session",
+      "# to prevent session fragmentation outside the workspace's expected session.",
+      'if [ -n "${AGENT_BROWSER_SESSION:-}" ]; then',
+      "  mux_argc=$#",
+      "  mux_i=0",
+      '  while [ "$mux_i" -lt "$mux_argc" ]; do',
+      '    mux_arg="$1"',
+      "    shift",
+      "    mux_i=$((mux_i + 1))",
+      '    case "$mux_arg" in',
+      "      --session)",
+      "        # Skip this arg AND the next (the session value)",
+      '        if [ "$mux_i" -lt "$mux_argc" ]; then',
+      "          shift",
+      "          mux_i=$((mux_i + 1))",
+      "        fi",
+      "        continue",
+      "        ;;",
+      "      --session=*)",
+      "        continue",
+      "        ;;",
+      "    esac",
+      '    set -- "$@" "$mux_arg"',
+      "  done",
+      `  exec ${quotedPosixBinaryPath} --session "$AGENT_BROWSER_SESSION" "$@"`,
+      "fi",
+      `exec ${quotedPosixBinaryPath} "$@"`,
+      "",
+    ].join("\n"),
+    windowsContent: [
+      "@echo off",
+      "setlocal",
+      "if not defined AGENT_BROWSER_SESSION (",
+      `  ${quotedWindowsBinaryPath} %*`,
+      "  exit /B",
+      ")",
+      'set "MUX_ARGS="',
+      ":mux_loop",
+      'if "%1"=="" goto mux_done',
+      'set "MUX_CUR=%~1"',
+      'if /I "%MUX_CUR%"=="--session" (',
+      "  shift",
+      "  shift",
+      "  goto mux_loop",
+      ")",
+      'set "MUX_TEST=%MUX_CUR:~0,10%"',
+      'if /I "%MUX_TEST%"=="--session=" (',
+      "  shift",
+      "  goto mux_loop",
+      ")",
+      'set "MUX_ARGS=%MUX_ARGS% %1"',
+      "shift",
+      "goto mux_loop",
+      ":mux_done",
+      `${quotedWindowsBinaryPath} --session "%AGENT_BROWSER_SESSION%" %MUX_ARGS%`,
+      "exit /B",
+      "",
+    ].join("\r\n"),
   };
 }

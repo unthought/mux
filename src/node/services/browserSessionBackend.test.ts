@@ -1,4 +1,5 @@
 import { describe, expect, mock, test } from "bun:test";
+
 import type { BrowserSession } from "@/common/types/browserSession";
 import { BrowserSessionBackend } from "@/node/services/browserSessionBackend";
 
