@@ -1,4 +1,5 @@
 import * as React from "react";
+import { getTextContent, TooltipIfPresent } from "@/browser/components/Tooltip/Tooltip";
 import { cn } from "@/common/lib/utils";
 
 interface SwitchProps {
@@ -8,8 +9,10 @@ interface SwitchProps {
   /** "default" (h-6 w-11) or "sm" (h-4 w-7) */
   size?: "default" | "sm";
   className?: string;
-  title?: string;
+  title?: React.ReactNode;
+  tooltip?: React.ReactNode;
   "aria-label"?: string;
+  "aria-labelledby"?: string;
 }
 
 /**
@@ -25,20 +28,25 @@ const Switch = React.forwardRef<HTMLButtonElement, SwitchProps>(
       size = "default",
       className,
       title,
+      tooltip,
       "aria-label": ariaLabel,
+      "aria-labelledby": ariaLabelledBy,
     },
     ref
   ) => {
     const isSmall = size === "sm";
-
-    return (
+    const resolvedTooltip = tooltip ?? title;
+    const tooltipLabel = getTextContent(resolvedTooltip).trim();
+    const resolvedAriaLabel =
+      ariaLabel != null || ariaLabelledBy != null || tooltipLabel === "" ? ariaLabel : tooltipLabel;
+    const button = (
       <button
         ref={ref}
         type="button"
         role="switch"
         aria-checked={checked}
-        aria-label={ariaLabel}
-        title={title}
+        aria-label={resolvedAriaLabel}
+        aria-labelledby={ariaLabelledBy}
         disabled={disabled}
         onClick={() => onCheckedChange(!checked)}
         className={cn(
@@ -65,6 +73,8 @@ const Switch = React.forwardRef<HTMLButtonElement, SwitchProps>(
         </span>
       </button>
     );
+
+    return <TooltipIfPresent tooltip={resolvedTooltip}>{button}</TooltipIfPresent>;
   }
 );
 Switch.displayName = "Switch";

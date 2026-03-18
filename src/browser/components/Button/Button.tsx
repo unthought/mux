@@ -1,6 +1,7 @@
 import * as React from "react";
 import { Slot } from "@radix-ui/react-slot";
 import { cva, type VariantProps } from "class-variance-authority";
+import { getTextContent, TooltipIfPresent } from "@/browser/components/Tooltip/Tooltip";
 import { cn } from "@/common/lib/utils";
 
 const buttonVariants = cva(
@@ -32,16 +33,66 @@ const buttonVariants = cva(
 );
 
 export interface ButtonProps
-  extends React.ButtonHTMLAttributes<HTMLButtonElement>, VariantProps<typeof buttonVariants> {
+  extends
+    Omit<React.ButtonHTMLAttributes<HTMLButtonElement>, "title">,
+    VariantProps<typeof buttonVariants> {
   asChild?: boolean;
+  title?: React.ReactNode;
+  tooltip?: React.ReactNode;
 }
 
 const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
-  ({ className, variant, size, asChild = false, ...props }, ref) => {
+  (
+    {
+      className,
+      variant,
+      size,
+      asChild = false,
+      title,
+      tooltip,
+      children,
+      "aria-label": ariaLabel,
+      "aria-labelledby": ariaLabelledBy,
+      ...props
+    },
+    ref
+  ) => {
     const Comp = asChild ? Slot : "button";
-    return (
-      <Comp className={cn(buttonVariants({ variant, size, className }))} ref={ref} {...props} />
+    // Shared controls intentionally reinterpret `title` as our custom tooltip surface so callers
+    // can keep using the prop they naturally reach for without falling back to a truncating native
+    // browser tooltip.
+    const resolvedTooltip = tooltip ?? title;
+    const childElement =
+      asChild &&
+      React.isValidElement<{ "aria-label"?: string; "aria-labelledby"?: string }>(children)
+        ? children
+        : null;
+    const hasExplicitAccessibleName =
+      ariaLabel != null ||
+      ariaLabelledBy != null ||
+      childElement?.props["aria-label"] != null ||
+      childElement?.props["aria-labelledby"] != null;
+    const visibleLabel = getTextContent(children).trim();
+    const tooltipLabel = getTextContent(resolvedTooltip).trim();
+    // Icon-only buttons historically relied on `title` for an accessible name; preserve that
+    // fallback when `title` is upgraded into our shared tooltip surface.
+    const resolvedAriaLabel =
+      hasExplicitAccessibleName || visibleLabel !== "" || tooltipLabel === ""
+        ? ariaLabel
+        : tooltipLabel;
+    const button = (
+      <Comp
+        className={cn(buttonVariants({ variant, size, className }))}
+        ref={ref}
+        aria-label={resolvedAriaLabel}
+        aria-labelledby={ariaLabelledBy}
+        {...props}
+      >
+        {children}
+      </Comp>
     );
+
+    return <TooltipIfPresent tooltip={resolvedTooltip}>{button}</TooltipIfPresent>;
   }
 );
 Button.displayName = "Button";
