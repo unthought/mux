@@ -904,9 +904,8 @@ export function WorkspaceProvider(props: WorkspaceProviderProps) {
   // and provides currentWorkspaceId/currentProjectId that we derive state from.
 
   // Check for launch project from server (for --add-project flag).
-  // This is explicit startup intent from the CLI/server, so it should still win
-  // even when RouterContext suppresses passive /workspace URL restores in dashboard mode.
-  // This only applies in server mode, runs after metadata loads.
+  // The backend decides when launch-project applies, so the frontend should
+  // trust any returned path as explicit startup intent.
   useEffect(() => {
     if (loading || !api) return;
 
@@ -1525,7 +1524,8 @@ export function WorkspaceProvider(props: WorkspaceProviderProps) {
     let cancelled = false;
 
     const autoCreate = async () => {
-      // In server mode with --add-project, defer startup routing to the launch-project effect.
+      // Defer to launch-project whenever the backend reports one so explicit startup
+      // intent can win before local new-chat auto-create fallback runs.
       try {
         const launchProject = await api?.server.getLaunchProject(undefined);
         if (cancelled || launchProject) return;

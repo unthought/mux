@@ -874,19 +874,10 @@ describe("WorkspaceContext", () => {
     expect(ctx().pendingNewWorkspaceProject).toBe(systemProjectPath);
   });
 
-  test("dashboard mode still honors explicit launch-project selection", async () => {
+  test("browser: launch-project opens project creation on true first launch", async () => {
     createMockAPI({
       workspace: {
-        list: () =>
-          Promise.resolve([
-            createWorkspaceMetadata({
-              id: "ws-launch",
-              projectPath: "/launch-project",
-              projectName: "launch-project",
-              name: "main",
-              namedWorkspacePath: "/launch-project-main",
-            }),
-          ]),
+        list: () => Promise.resolve([]),
       },
       projects: {
         list: () => Promise.resolve([]),
@@ -902,56 +893,16 @@ describe("WorkspaceContext", () => {
     const ctx = await setup();
 
     await waitFor(() => expect(ctx().loading).toBe(false));
-
     await waitFor(() => {
-      expect(ctx().selectedWorkspace?.workspaceId).toBe("ws-launch");
+      expect(ctx().pendingNewWorkspaceProject).toBe("/launch-project");
     });
+    expect(ctx().selectedWorkspace).toBeNull();
   });
 
-  test("default launch behavior still honors explicit launch-project selection", async () => {
+  test("desktop: launch-project opens project creation on true first launch", async () => {
     createMockAPI({
       workspace: {
-        list: () =>
-          Promise.resolve([
-            createWorkspaceMetadata({
-              id: "ws-launch",
-              projectPath: "/launch-project",
-              projectName: "launch-project",
-              name: "main",
-              namedWorkspacePath: "/launch-project-main",
-            }),
-          ]),
-      },
-      projects: {
         list: () => Promise.resolve([]),
-      },
-      server: {
-        getLaunchProject: () => Promise.resolve("/launch-project"),
-      },
-    });
-
-    const ctx = await setup();
-
-    await waitFor(() => expect(ctx().loading).toBe(false));
-
-    await waitFor(() => {
-      expect(ctx().selectedWorkspace?.workspaceId).toBe("ws-launch");
-    });
-  });
-
-  test("last-workspace mode allows launch-project auto-selection", async () => {
-    createMockAPI({
-      workspace: {
-        list: () =>
-          Promise.resolve([
-            createWorkspaceMetadata({
-              id: "ws-launch",
-              projectPath: "/launch-project",
-              projectName: "launch-project",
-              name: "main",
-              namedWorkspacePath: "/launch-project-main",
-            }),
-          ]),
       },
       projects: {
         list: () => Promise.resolve([]),
@@ -960,30 +911,66 @@ describe("WorkspaceContext", () => {
         getLaunchProject: () => Promise.resolve("/launch-project"),
       },
       localStorage: {
-        [LAUNCH_BEHAVIOR_KEY]: JSON.stringify("last-workspace"),
+        [LAUNCH_BEHAVIOR_KEY]: JSON.stringify("dashboard"),
+      },
+      desktopMode: true,
+    });
+
+    const ctx = await setup();
+
+    await waitFor(() => expect(ctx().loading).toBe(false));
+    await waitFor(() => {
+      expect(ctx().pendingNewWorkspaceProject).toBe("/launch-project");
+    });
+    expect(ctx().selectedWorkspace).toBeNull();
+  });
+
+  test("launch-project ignores seeded system projects and workspaces on true first launch", async () => {
+    createMockAPI({
+      workspace: {
+        list: () =>
+          Promise.resolve([
+            createWorkspaceMetadata({
+              id: "mux-chat",
+              projectPath: "/system/chat-with-mux",
+              projectName: "chat-with-mux",
+              name: "main",
+              namedWorkspacePath: "/system/chat-with-mux-main",
+            }),
+          ]),
+      },
+      projects: {
+        list: () =>
+          Promise.resolve([["/system/chat-with-mux", { workspaces: [], projectKind: "system" }]]),
+      },
+      server: {
+        getLaunchProject: () => Promise.resolve("/launch-project"),
+      },
+      localStorage: {
+        [LAUNCH_BEHAVIOR_KEY]: JSON.stringify("dashboard"),
       },
     });
 
     const ctx = await setup();
 
     await waitFor(() => expect(ctx().loading).toBe(false));
-
     await waitFor(() => {
-      expect(ctx().selectedWorkspace?.projectPath).toBe("/launch-project");
+      expect(ctx().pendingNewWorkspaceProject).toBe("/launch-project");
     });
+    expect(ctx().selectedWorkspace).toBeNull();
   });
 
-  test("new-chat mode still allows launch-project auto-selection", async () => {
+  test("browser: new-chat mode defers to backend launch-project when provided", async () => {
     createMockAPI({
       workspace: {
         list: () =>
           Promise.resolve([
             createWorkspaceMetadata({
-              id: "ws-launch",
-              projectPath: "/launch-project",
-              projectName: "launch-project",
+              id: "ws-existing",
+              projectPath: "/existing-project",
+              projectName: "existing-project",
               name: "main",
-              namedWorkspacePath: "/launch-project-main",
+              namedWorkspacePath: "/existing-project-main",
             }),
           ]),
       },
@@ -1001,39 +988,48 @@ describe("WorkspaceContext", () => {
     const ctx = await setup();
 
     await waitFor(() => expect(ctx().loading).toBe(false));
-
-    await waitFor(() => {
-      expect(ctx().selectedWorkspace?.projectPath).toBe("/launch-project");
-    });
-  });
-
-  test("launch project opens project creation when no workspace exists yet, even in dashboard mode", async () => {
-    createMockAPI({
-      workspace: {
-        list: () => Promise.resolve([]),
-      },
-      projects: {
-        list: () => Promise.resolve([["/launch-project", { workspaces: [] }]]),
-      },
-      server: {
-        getLaunchProject: () => Promise.resolve("/launch-project"),
-      },
-      localStorage: {
-        [LAUNCH_BEHAVIOR_KEY]: JSON.stringify("dashboard"),
-      },
-    });
-
-    const ctx = await setup();
-
-    await waitFor(() => expect(ctx().loading).toBe(false));
-
     await waitFor(() => {
       expect(ctx().pendingNewWorkspaceProject).toBe("/launch-project");
     });
     expect(ctx().selectedWorkspace).toBeNull();
   });
 
-  test("launch project does not override existing selection", async () => {
+  test("desktop: new-chat mode uses the recent workspace when backend has no launch-project", async () => {
+    createMockAPI({
+      workspace: {
+        list: () =>
+          Promise.resolve([
+            createWorkspaceMetadata({
+              id: "ws-existing",
+              projectPath: "/existing-project",
+              projectName: "existing-project",
+              name: "main",
+              namedWorkspacePath: "/existing-project-main",
+            }),
+          ]),
+      },
+      projects: {
+        list: () => Promise.resolve([]),
+      },
+      server: {
+        getLaunchProject: () => Promise.resolve(null),
+      },
+      localStorage: {
+        [LAUNCH_BEHAVIOR_KEY]: JSON.stringify("new-chat"),
+      },
+      desktopMode: true,
+    });
+
+    const ctx = await setup();
+
+    await waitFor(() => expect(ctx().loading).toBe(false));
+    await waitFor(() => {
+      expect(ctx().pendingNewWorkspaceProject).toBe("/existing-project");
+    });
+    expect(ctx().selectedWorkspace).toBeNull();
+  });
+
+  test("browser: launch project does not override existing selection", async () => {
     createMockAPI({
       workspace: {
         list: () =>
@@ -1228,6 +1224,7 @@ interface MockAPIOptions {
   localStorage?: Record<string, string>;
   locationHash?: string;
   locationPath?: string;
+  desktopMode?: boolean;
   pendingDeepLinks?: Array<{ type: string; [key: string]: unknown }>;
 }
 
@@ -1244,7 +1241,12 @@ function createMockAPI(options: MockAPIOptions = {}) {
     }
   }
 
-  if (options.locationPath) {
+  if (options.desktopMode) {
+    // Desktop/Electron uses file: protocol
+    happyWindow.location.href = options.locationPath
+      ? `file:///index.html#${options.locationPath}`
+      : "file:///index.html";
+  } else if (options.locationPath) {
     happyWindow.location.href = `http://localhost${options.locationPath}`;
   }
 

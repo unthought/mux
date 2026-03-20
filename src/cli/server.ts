@@ -17,6 +17,7 @@ import { VERSION } from "@/version";
 import { getParseOptions } from "./argv";
 import { resolveServerAuthToken } from "./serverAuthToken";
 import { appendServerCrashLogSync } from "./serverCrashLogging";
+import { shouldExposeLaunchProject } from "./launchProject";
 
 // Server-mode crashes can terminate the process before the async logger flushes,
 // so these top-level hooks mirror fatal details into mux.log synchronously.
@@ -43,37 +44,6 @@ process.on("beforeExit", (code) => {
   });
 });
 
-const program = new Command();
-program
-  .name("mux server")
-  .description("HTTP/WebSocket ORPC server for mux")
-  .option("-h, --host <host>", "bind to specific host", "localhost")
-  .option("-p, --port <port>", "bind to specific port", "3000")
-  .option("--auth-token <token>", "bearer token for HTTP/WS auth (default: auto-generated)")
-  .option("--no-auth", "disable authentication (server is open to anyone who can reach it)")
-  .option("--print-auth-token", "always print the auth token on startup")
-  .option(
-    "--allow-http-origin",
-    "allow HTTPS origins when TLS is terminated by a proxy that forwards X-Forwarded-Proto=http"
-  )
-  .option("--ssh-host <host>", "SSH hostname/alias for editor deep links (e.g., devbox)")
-  .option("--add-project <path>", "add and open project at the specified path (idempotent)")
-  .parse(process.argv, getParseOptions());
-
-const options = program.opts();
-const HOST = options.host as string;
-const PORT = Number.parseInt(String(options.port), 10);
-const resolved = resolveServerAuthToken({
-  noAuth: options.noAuth === true || options.auth === false,
-  cliToken: options.authToken as string | undefined,
-  envToken: process.env.MUX_SERVER_AUTH_TOKEN,
-});
-const ADD_PROJECT_PATH = options.addProject as string | undefined;
-// HTTPS-terminating proxy compatibility is opt-in so local/default deployments stay strict.
-const ALLOW_HTTP_ORIGIN = options.allowHttpOrigin === true;
-// SSH host for editor deep links (CLI flag > env var > config file, resolved later)
-const CLI_SSH_HOST = options.sshHost as string | undefined;
-
 // Track the launch project path for initial navigation
 let launchProjectPath: string | null = null;
 
@@ -87,7 +57,40 @@ const mockWindow: BrowserWindow = {
   },
 } as unknown as BrowserWindow;
 
-(async () => {
+async function main(): Promise<void> {
+  const program = new Command();
+  program
+    .name("mux server")
+    .description("HTTP/WebSocket ORPC server for mux")
+    .option("-h, --host <host>", "bind to specific host", "localhost")
+    .option("-p, --port <port>", "bind to specific port", "3000")
+    .option("--auth-token <token>", "bearer token for HTTP/WS auth (default: auto-generated)")
+    .option("--no-auth", "disable authentication (server is open to anyone who can reach it)")
+    .option("--print-auth-token", "always print the auth token on startup")
+    .option(
+      "--allow-http-origin",
+      "allow HTTPS origins when TLS is terminated by a proxy that forwards X-Forwarded-Proto=http"
+    )
+    .option("--ssh-host <host>", "SSH hostname/alias for editor deep links (e.g., devbox)")
+    .option("--add-project <path>", "add and open project at the specified path (idempotent)")
+    .parse(process.argv, getParseOptions());
+
+  const options = program.opts();
+  const HOST = options.host as string;
+  const PORT = Number.parseInt(String(options.port), 10);
+  const resolved = resolveServerAuthToken({
+    noAuth: options.noAuth === true || options.auth === false,
+    cliToken: options.authToken as string | undefined,
+    envToken: process.env.MUX_SERVER_AUTH_TOKEN,
+  });
+  const ADD_PROJECT_PATH = options.addProject as string | undefined;
+  // HTTPS-terminating proxy compatibility is opt-in so local/default deployments stay strict.
+  const ALLOW_HTTP_ORIGIN = options.allowHttpOrigin === true;
+  // SSH host for editor deep links (CLI flag > env var > config file, resolved later)
+  const CLI_SSH_HOST = options.sshHost as string | undefined;
+
+  launchProjectPath = null;
+
   // Keepalive interval to prevent premature process exit during async initialization.
   // During startup, taskService.initialize() may resume running tasks by calling
   // sendMessage(), which spawns background AI streams. Between the completion of
@@ -254,7 +257,9 @@ const mockWindow: BrowserWindow = {
 
   process.on("SIGINT", () => void cleanup());
   process.on("SIGTERM", () => void cleanup());
-})().catch((error) => {
+}
+
+void main().catch((error) => {
   appendServerCrashLogSync({
     event: "Failed to initialize server",
     detail: error,
@@ -279,13 +284,16 @@ async function initializeProjectDirect(
     normalizedPath = validation.expandedPath;
 
     const projects = serviceContainer.projectService.list();
+    const shouldSetLaunchProject = shouldExposeLaunchProject(projects);
     const alreadyExists = Array.isArray(projects)
       ? projects.some(([path]) => path === normalizedPath)
       : false;
 
     if (alreadyExists) {
       console.log(`Project already exists: ${normalizedPath}`);
-      launchProjectPath = normalizedPath;
+      if (shouldSetLaunchProject) {
+        launchProjectPath = normalizedPath;
+      }
       return;
     }
 
@@ -293,7 +301,9 @@ async function initializeProjectDirect(
     const result = await serviceContainer.projectService.create(normalizedPath);
     if (result.success) {
       console.log(`Project created at ${normalizedPath}`);
-      launchProjectPath = normalizedPath;
+      if (shouldSetLaunchProject) {
+        launchProjectPath = normalizedPath;
+      }
     } else {
       const errorMsg =
         typeof result.error === "string"
