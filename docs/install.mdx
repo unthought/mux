@@ -17,20 +17,11 @@ description: Download and install Mux for macOS, Linux, and Windows
 
 ### Development Builds
 
-Download pre-built binaries of `main` from [GitHub Actions](https://github.com/coder/mux/actions/workflows/pr.yml?query=event:push+branch:main):
+Development builds can be produced locally with `make build`. Platform-specific artifacts:
 
-- **macOS**: Signed and notarized DMG
-  - `build-macos-x64` (Intel Macs)
-  - `build-macos-arm64` (Apple Silicon)
-- **Linux**: `build-linux` AppImage (portable, works on most distros)
-- **Windows**: `build-windows` installer exe
-
-To download:
-
-1. Go to the [PR workflow (main branch)](https://github.com/coder/mux/actions/workflows/pr.yml?query=event:push+branch:main)
-2. Click on the latest successful run
-3. Scroll down to "Artifacts" section
-4. Download the appropriate artifact for your platform
+- **macOS**: Signed and notarized DMG (`build-macos-x64` for Intel, `build-macos-arm64` for Apple Silicon)
+- **Linux**: AppImage (portable, works on most distros)
+- **Windows**: Installer exe
 
 ### Installation
 
