@@ -1,10 +1,11 @@
 import type { JSX } from "react";
 import { createContext, useContext, useMemo } from "react";
 import type { PropsWithChildren } from "react";
+
+import { assert } from "../utils/assert";
 import { colors, type ThemeColors } from "./colors";
 import { spacing, type ThemeSpacing } from "./spacing";
 import { typography, type ThemeTypography } from "./typography";
-import { assert } from "../utils/assert";
 
 export interface ThemeRadii {
   xs: number;

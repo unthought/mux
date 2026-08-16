@@ -1,17 +1,18 @@
+import { Ionicons } from "@expo/vector-icons";
+import { useLocalSearchParams } from "expo-router";
 import type { JSX } from "react";
 import { useCallback, useEffect, useState } from "react";
 import { ActivityIndicator, FlatList, RefreshControl, StyleSheet, Text, View } from "react-native";
-import { useLocalSearchParams } from "expo-router";
-import { Ionicons } from "@expo/vector-icons";
-import { useTheme } from "../theme";
-import { useORPC } from "../orpc/react";
-import { parseDiff, extractAllHunks } from "../utils/git/diffParser";
-import { parseNumstat, buildFileTree } from "../utils/git/numstatParser";
-import { buildGitDiffCommand } from "../utils/git/gitCommands";
-import type { DiffHunk } from "../types/review";
-import type { FileTreeNode } from "../utils/git/numstatParser";
+
 import { DiffHunkView } from "../components/git/DiffHunkView";
 import { ReviewFilters } from "../components/git/ReviewFilters";
+import { useORPC } from "../orpc/react";
+import { useTheme } from "../theme";
+import type { DiffHunk } from "../types/review";
+import { parseDiff, extractAllHunks } from "../utils/git/diffParser";
+import { buildGitDiffCommand } from "../utils/git/gitCommands";
+import { parseNumstat, buildFileTree } from "../utils/git/numstatParser";
+import type { FileTreeNode } from "../utils/git/numstatParser";
 
 export default function GitReviewScreen(): JSX.Element {
   const theme = useTheme();
@@ -91,9 +92,7 @@ export default function GitReviewScreen(): JSX.Element {
 
       // Set truncation warning only when not filtering by path
       if (truncationInfo && !selectedFilePath) {
-        setTruncationWarning(
-          `Diff truncated (${truncationInfo.reason}). Tap a file below to see its changes.`
-        );
+        setTruncationWarning(`Diff truncated (${truncationInfo.reason}). Tap a file below to see its changes.`);
       }
 
       setHunks(allHunks);
@@ -152,9 +151,7 @@ export default function GitReviewScreen(): JSX.Element {
       {isLoading ? (
         <View style={styles.centerContainer}>
           <ActivityIndicator size="large" color={theme.colors.accent} />
-          <Text style={[styles.loadingText, { color: theme.colors.foregroundSecondary }]}>
-            Loading git changes...
-          </Text>
+          <Text style={[styles.loadingText, { color: theme.colors.foregroundSecondary }]}>Loading git changes...</Text>
         </View>
       ) : error ? (
         <View style={styles.centerContainer}>
@@ -162,9 +159,7 @@ export default function GitReviewScreen(): JSX.Element {
         </View>
       ) : hunks.length === 0 ? (
         <View style={styles.centerContainer}>
-          <Text style={[styles.emptyText, { color: theme.colors.foregroundSecondary }]}>
-            No changes to review
-          </Text>
+          <Text style={[styles.emptyText, { color: theme.colors.foregroundSecondary }]}>No changes to review</Text>
           <Text style={[styles.emptyHint, { color: theme.colors.foregroundTertiary }]}>
             Try changing the base branch above
           </Text>
@@ -175,11 +170,7 @@ export default function GitReviewScreen(): JSX.Element {
           renderItem={renderHunk}
           keyExtractor={(item) => item.id}
           refreshControl={
-            <RefreshControl
-              refreshing={isRefreshing}
-              onRefresh={handleRefresh}
-              tintColor={theme.colors.accent}
-            />
+            <RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} tintColor={theme.colors.accent} />
           }
           contentContainerStyle={styles.listContent}
         />

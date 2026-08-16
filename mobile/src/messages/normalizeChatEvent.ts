@@ -1,9 +1,10 @@
-import type { DisplayedMessage, WorkspaceChatEvent } from "../types";
-import type { MuxMessage, MuxTextPart, MuxFilePart } from "@/common/types/message";
-import type { DynamicToolPart } from "@/common/types/toolParts";
+import { createChatEventProcessor } from "@/browser/utils/messages/ChatEventProcessor";
 import type { WorkspaceChatMessage } from "@/common/orpc/types";
 import { isMuxMessage } from "@/common/orpc/types";
-import { createChatEventProcessor } from "@/browser/utils/messages/ChatEventProcessor";
+import type { MuxMessage, MuxTextPart, MuxFilePart } from "@/common/types/message";
+import type { DynamicToolPart } from "@/common/types/toolParts";
+
+import type { DisplayedMessage, WorkspaceChatEvent } from "../types";
 
 /**
  * All possible event types that have a `type` discriminant field.
@@ -13,11 +14,7 @@ import { createChatEventProcessor } from "@/browser/utils/messages/ChatEventProc
  * here if the handler map doesn't handle them - preventing runtime surprises.
  */
 type TypedEventType =
-  Exclude<WorkspaceChatMessage, MuxMessage> extends infer T
-    ? T extends { type: infer U }
-      ? U
-      : never
-    : never;
+  Exclude<WorkspaceChatMessage, MuxMessage> extends infer T ? (T extends { type: infer U } ? U : never) : never;
 
 type IncomingEvent = WorkspaceChatEvent | DisplayedMessage | string | number | null | undefined;
 
@@ -114,11 +111,7 @@ function transformMuxToDisplayed(message: MuxMessage): DisplayedMessage[] {
     let lastPartIndex = -1;
     for (let i = mergedParts.length - 1; i >= 0; i--) {
       const part = mergedParts[i];
-      if (
-        part.type === "reasoning" ||
-        (part.type === "text" && part.text) ||
-        part.type === "dynamic-tool"
-      ) {
+      if (part.type === "reasoning" || (part.type === "text" && part.text) || part.type === "dynamic-tool") {
         lastPartIndex = i;
         break;
       }
@@ -238,10 +231,7 @@ export function createChatEventExpander(): ChatEventExpander {
    * Emit partial messages for active stream.
    * Called during streaming to show real-time updates.
    */
-  const emitDisplayedMessages = (
-    messageId: string,
-    options: { isStreaming: boolean }
-  ): DisplayedMessage[] => {
+  const emitDisplayedMessages = (messageId: string, options: { isStreaming: boolean }): DisplayedMessage[] => {
     const message = processor.getMessageById(messageId);
     if (!message) {
       return [];
@@ -317,10 +307,7 @@ export function createChatEventExpander(): ChatEventExpander {
 
     if (isObject(payload) && typeof payload.type === "string") {
       // Check if it's an already-formed DisplayedMessage (from backend)
-      if (
-        "historySequence" in payload &&
-        DISPLAYABLE_MESSAGE_TYPES.has(payload.type as DisplayedMessage["type"])
-      ) {
+      if ("historySequence" in payload && DISPLAYABLE_MESSAGE_TYPES.has(payload.type as DisplayedMessage["type"])) {
         return [payload as DisplayedMessage];
       }
 

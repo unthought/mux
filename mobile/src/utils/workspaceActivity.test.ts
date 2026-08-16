@@ -1,10 +1,9 @@
 import { describe, expect, it } from "bun:test";
+
 import type { WorkspaceActivitySnapshot } from "../types";
 import { getWorkspaceActivityPresentation } from "./workspaceActivity";
 
-function createActivitySnapshot(
-  overrides: Partial<WorkspaceActivitySnapshot> = {}
-): WorkspaceActivitySnapshot {
+function createActivitySnapshot(overrides: Partial<WorkspaceActivitySnapshot> = {}): WorkspaceActivitySnapshot {
   return {
     recency: 1,
     streaming: false,
@@ -41,9 +40,7 @@ describe("getWorkspaceActivityPresentation", () => {
   });
 
   it("surfaces follow-up work when a workspace has pending todos", () => {
-    expect(
-      getWorkspaceActivityPresentation(createActivitySnapshot({ hasTodos: true }), "Yesterday")
-    ).toEqual({
+    expect(getWorkspaceActivityPresentation(createActivitySnapshot({ hasTodos: true }), "Yesterday")).toEqual({
       label: "Needs follow-up",
       detail: "Yesterday",
       tone: "attention",

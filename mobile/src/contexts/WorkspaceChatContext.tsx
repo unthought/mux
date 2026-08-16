@@ -1,5 +1,6 @@
 import type { JSX, ReactNode } from "react";
 import { createContext, useCallback, useContext, useRef } from "react";
+
 import { createChatEventExpander } from "../messages/normalizeChatEvent";
 import type { ChatEventExpander } from "../messages/normalizeChatEvent";
 

@@ -1,3 +1,7 @@
+import { Ionicons } from "@expo/vector-icons";
+import { Picker } from "@react-native-picker/picker";
+import { useQuery } from "@tanstack/react-query";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import type { JSX } from "react";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -10,48 +14,37 @@ import {
   TextInput,
   View,
 } from "react-native";
-import type {
-  LayoutChangeEvent,
-  TextInputContentSizeChangeEventData,
-  TextInputKeyPressEventData,
-} from "react-native";
-import { useLocalSearchParams, useRouter } from "expo-router";
-import { Ionicons } from "@expo/vector-icons";
-import { useQuery } from "@tanstack/react-query";
+import type { LayoutChangeEvent, TextInputContentSizeChangeEventData, TextInputKeyPressEventData } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Picker } from "@react-native-picker/picker";
-import { useTheme } from "../theme";
-import { ThemedText } from "../components/ThemedText";
-import { useORPC } from "../orpc/react";
-import { useWorkspaceCost } from "../contexts/WorkspaceCostContext";
+
+import { parseCommand } from "@/browser/utils/slashCommands/parser";
+import type { SlashSuggestion } from "@/browser/utils/slashCommands/types";
+import type { RuntimeConfig, RuntimeMode } from "@/common/types/runtime";
+import { RUNTIME_MODE, parseRuntimeModeAndHost, buildRuntimeString } from "@/common/types/runtime";
 import type { StreamAbortEvent, StreamEndEvent } from "@/common/types/stream.ts";
-import { MessageRenderer } from "../messages/MessageRenderer";
-import { useWorkspaceSettings } from "../hooks/useWorkspaceSettings";
-import type { ThinkingLevel, WorkspaceMode } from "../types/settings";
+import { isThinkingLevel } from "@/common/types/thinking";
+import { supports1MContext } from "@/common/utils/ai/models";
+import { enforceThinkingPolicy } from "@/common/utils/thinking/policy";
+
 import { FloatingTodoCard } from "../components/FloatingTodoCard";
+import { FullscreenComposerModal } from "../components/FullscreenComposerModal";
+import { RunSettingsSheet } from "../components/RunSettingsSheet";
+import { SlashCommandSuggestions } from "../components/SlashCommandSuggestions";
+import { ThemedText } from "../components/ThemedText";
+import { ToastBanner, ToastPayload, ToastState } from "../components/ToastBanner";
 import type { TodoItem } from "../components/TodoItemView";
-import type { DisplayedMessage, WorkspaceChatEvent } from "../types";
 import { useLiveBashOutputStore } from "../contexts/LiveBashOutputContext";
 import { useWorkspaceChat } from "../contexts/WorkspaceChatContext";
-import { applyChatEvent, TimelineEntry } from "./chatTimelineReducer";
-import type { SlashSuggestion } from "@/browser/utils/slashCommands/types";
-import { parseCommand } from "@/browser/utils/slashCommands/parser";
-import { useSlashCommandSuggestions } from "../hooks/useSlashCommandSuggestions";
-import { ToastBanner, ToastPayload, ToastState } from "../components/ToastBanner";
-import { SlashCommandSuggestions } from "../components/SlashCommandSuggestions";
-import { executeSlashCommand } from "../utils/slashCommandRunner";
-import { createCompactedMessage } from "../utils/messageHelpers";
-import type { RuntimeConfig, RuntimeMode } from "@/common/types/runtime";
-import { enforceThinkingPolicy } from "@/common/utils/thinking/policy";
-import { supports1MContext } from "@/common/utils/ai/models";
-import { isThinkingLevel } from "@/common/types/thinking";
-import { RUNTIME_MODE, parseRuntimeModeAndHost, buildRuntimeString } from "@/common/types/runtime";
-import { loadRuntimePreference, saveRuntimePreference } from "../utils/workspacePreferences";
-import { FullscreenComposerModal } from "../components/FullscreenComposerModal";
-
-import { RunSettingsSheet } from "../components/RunSettingsSheet";
+import { useWorkspaceCost } from "../contexts/WorkspaceCostContext";
 import { useModelHistory } from "../hooks/useModelHistory";
-import { areTodosEqual, extractTodosFromEvent } from "../utils/todoLifecycle";
+import { useSlashCommandSuggestions } from "../hooks/useSlashCommandSuggestions";
+import { useWorkspaceSettings } from "../hooks/useWorkspaceSettings";
+import { MessageRenderer } from "../messages/MessageRenderer";
+import { useORPC } from "../orpc/react";
+import { useTheme } from "../theme";
+import type { DisplayedMessage, WorkspaceChatEvent } from "../types";
+import type { ThinkingLevel, WorkspaceMode } from "../types/settings";
+import { createCompactedMessage } from "../utils/messageHelpers";
 import {
   assertKnownModelId,
   formatModelSummary,
@@ -59,26 +52,21 @@ import {
   isKnownModelId,
   sanitizeModelSequence,
 } from "../utils/modelCatalog";
+import { executeSlashCommand } from "../utils/slashCommandRunner";
+import { areTodosEqual, extractTodosFromEvent } from "../utils/todoLifecycle";
+import { loadRuntimePreference, saveRuntimePreference } from "../utils/workspacePreferences";
+import { applyChatEvent, TimelineEntry } from "./chatTimelineReducer";
 
 const CHAT_INPUT_MIN_HEIGHT = 38;
 const CHAT_INPUT_MAX_HEIGHT = 120;
 
 if (__DEV__) {
-  console.assert(
-    CHAT_INPUT_MIN_HEIGHT < CHAT_INPUT_MAX_HEIGHT,
-    "Chat composer height bounds invalid"
-  );
+  console.assert(CHAT_INPUT_MIN_HEIGHT < CHAT_INPUT_MAX_HEIGHT, "Chat composer height bounds invalid");
 }
 
 type ThemeSpacing = ReturnType<typeof useTheme>["spacing"];
 
-function RawEventCard({
-  payload,
-  onDismiss,
-}: {
-  payload: WorkspaceChatEvent;
-  onDismiss?: () => void;
-}): JSX.Element {
+function RawEventCard({ payload, onDismiss }: { payload: WorkspaceChatEvent; onDismiss?: () => void }): JSX.Element {
   const theme = useTheme();
   const spacing = theme.spacing;
 
@@ -173,10 +161,7 @@ interface WorkspaceScreenInnerProps {
   };
 }
 
-function WorkspaceScreenInner({
-  workspaceId,
-  creationContext,
-}: WorkspaceScreenInnerProps): JSX.Element {
+function WorkspaceScreenInner({ workspaceId, creationContext }: WorkspaceScreenInnerProps): JSX.Element {
   const isCreationMode = !workspaceId && !!creationContext;
   const router = useRouter();
   const { recordStreamUsage } = useWorkspaceCost();
@@ -200,15 +185,9 @@ function WorkspaceScreenInner({
   const { recentModels, addRecentModel } = useModelHistory();
   const [isRunSettingsVisible, setRunSettingsVisible] = useState(false);
   const selectedModelEntry = useMemo(() => assertKnownModelId(model), [model]);
-  const effectiveThinkingLevel = useMemo(
-    () => enforceThinkingPolicy(model, thinkingLevel),
-    [model, thinkingLevel]
-  );
+  const effectiveThinkingLevel = useMemo(() => enforceThinkingPolicy(model, thinkingLevel), [model, thinkingLevel]);
   const supportsBeta1MContext = supports1MContext(model);
-  const modelPickerRecents = useMemo(
-    () => sanitizeModelSequence([model, ...recentModels]),
-    [model, recentModels]
-  );
+  const modelPickerRecents = useMemo(() => sanitizeModelSequence([model, ...recentModels]), [model, recentModels]);
   const sendMessageOptions = useMemo(
     () => ({
       agentId: mode,
@@ -289,15 +268,12 @@ function WorkspaceScreenInner({
       if (!target) {
         return;
       }
-      const replacement = target.replacement.endsWith(" ")
-        ? target.replacement
-        : `${target.replacement} `;
+      const replacement = target.replacement.endsWith(" ") ? target.replacement : `${target.replacement} `;
       setInputWithSuggestionGuard(replacement);
     },
     [commandHighlightIndex, commandSuggestions, setInputWithSuggestionGuard]
   );
-  const showCommandSuggestions =
-    !isCreationMode && !suppressCommandSuggestions && commandSuggestions.length > 0;
+  const showCommandSuggestions = !isCreationMode && !suppressCommandSuggestions && commandSuggestions.length > 0;
   const handleCommandKeyDown = useCallback(
     (event: NativeSyntheticEvent<TextInputKeyPressEventData>) => {
       if (!showCommandSuggestions || commandSuggestions.length === 0) {
@@ -309,9 +285,7 @@ function WorkspaceScreenInner({
         setCommandHighlightIndex((prev) => (prev + 1) % commandSuggestions.length);
       } else if (key === "ArrowUp") {
         event.preventDefault();
-        setCommandHighlightIndex(
-          (prev) => (prev - 1 + commandSuggestions.length) % commandSuggestions.length
-        );
+        setCommandHighlightIndex((prev) => (prev - 1 + commandSuggestions.length) % commandSuggestions.length);
       } else if (key === "Tab") {
         event.preventDefault();
         selectHighlightedCommand();
@@ -320,12 +294,7 @@ function WorkspaceScreenInner({
         setSuppressCommandSuggestions(true);
       }
     },
-    [
-      commandSuggestions.length,
-      selectHighlightedCommand,
-      setSuppressCommandSuggestions,
-      showCommandSuggestions,
-    ]
+    [commandSuggestions.length, selectHighlightedCommand, setSuppressCommandSuggestions, showCommandSuggestions]
   );
 
   const runSettingsDetails = useMemo(() => {
@@ -336,9 +305,7 @@ function WorkspaceScreenInner({
 
   // Creation mode: branch selection state
   const [branches, setBranches] = useState<string[]>(creationContext?.branches ?? []);
-  const [trunkBranch, setTrunkBranch] = useState<string>(
-    creationContext?.defaultTrunk ?? branches[0] ?? "main"
-  );
+  const [trunkBranch, setTrunkBranch] = useState<string>(creationContext?.defaultTrunk ?? branches[0] ?? "main");
 
   // Creation mode: advanced options state
   const [showAdvanced, setShowAdvanced] = useState(false);
@@ -359,9 +326,7 @@ function WorkspaceScreenInner({
   const [isFullscreenComposerOpen, setFullscreenComposerOpen] = useState(false);
 
   // Editing state - tracks message being edited
-  const [editingMessage, setEditingMessage] = useState<{ id: string; content: string } | undefined>(
-    undefined
-  );
+  const [editingMessage, setEditingMessage] = useState<{ id: string; content: string } | undefined>(undefined);
   const handlePlaceholder = useMemo(() => {
     if (isCreationMode) {
       return "Describe what you want to build...";
@@ -504,9 +469,7 @@ function WorkspaceScreenInner({
     const nextThinking = isThinkingLevel(ai.thinkingLevel) ? ai.thinkingLevel : null;
 
     const modelForThinking = nextModel ?? model;
-    const effectiveThinking = nextThinking
-      ? enforceThinkingPolicy(modelForThinking, nextThinking)
-      : null;
+    const effectiveThinking = nextThinking ? enforceThinkingPolicy(modelForThinking, nextThinking) : null;
 
     if (nextModel && nextModel !== model) {
       void setModel(nextModel);
@@ -586,11 +549,7 @@ function WorkspaceScreenInner({
         if (payload.type === "caught-up") {
           hasCaughtUpRef.current = true;
 
-          if (
-            pendingTodosRef.current &&
-            pendingTodosRef.current.length > 0 &&
-            isStreamActiveRef.current
-          ) {
+          if (pendingTodosRef.current && pendingTodosRef.current.length > 0 && isStreamActiveRef.current) {
             const pending = pendingTodosRef.current;
             setCurrentTodos((prev) => (areTodosEqual(prev, pending) ? prev : pending));
           } else if (!isStreamActiveRef.current) {
@@ -626,9 +585,7 @@ function WorkspaceScreenInner({
         ) {
           const tokens = payload.tokens;
           const timestamp =
-            "timestamp" in payload && typeof payload.timestamp === "number"
-              ? payload.timestamp
-              : Date.now();
+            "timestamp" in payload && typeof payload.timestamp === "number" ? payload.timestamp : Date.now();
 
           // Add delta with timestamp
           deltasRef.current.push({ tokens, timestamp });
@@ -706,10 +663,7 @@ function WorkspaceScreenInner({
     // Subscribe via SSE async generator
     (async () => {
       try {
-        const iterator = await client.workspace.onChat(
-          { workspaceId: workspaceId! },
-          { signal: controller.signal }
-        );
+        const iterator = await client.workspace.onChat({ workspaceId: workspaceId! }, { signal: controller.signal });
         for await (const event of iterator) {
           if (controller.signal.aborted) break;
           handlePayload(event as unknown as WorkspaceChatEvent);
@@ -887,9 +841,7 @@ function WorkspaceScreenInner({
       }
 
       const runtimeConfig: RuntimeConfig | undefined =
-        runtimeMode === RUNTIME_MODE.SSH
-          ? { type: "ssh" as const, host: sshHost, srcBaseDir: "~/mux" }
-          : undefined;
+        runtimeMode === RUNTIME_MODE.SSH ? { type: "ssh" as const, host: sshHost, srcBaseDir: "~/mux" } : undefined;
 
       const identity = await client.nameGeneration.generate({
         message: trimmed,
@@ -899,11 +851,7 @@ function WorkspaceScreenInner({
       if (!identity.success) {
         const err = identity.error;
         const errorMsg =
-          typeof err === "string"
-            ? err
-            : err?.type === "unknown"
-              ? err.raw
-              : (err?.type ?? "Unknown error");
+          typeof err === "string" ? err : err?.type === "unknown" ? err.raw : (err?.type ?? "Unknown error");
         console.error("[createWorkspace] Name generation failed:", errorMsg);
         showErrorToast("New workspace", errorMsg);
         setInputWithSuggestionGuard(originalContent);
@@ -945,11 +893,7 @@ function WorkspaceScreenInner({
       if (!sendResult.success) {
         const err = sendResult.error;
         const errorMsg =
-          typeof err === "string"
-            ? err
-            : err?.type === "unknown"
-              ? err.raw
-              : (err?.type ?? "Unknown error");
+          typeof err === "string" ? err : err?.type === "unknown" ? err.raw : (err?.type ?? "Unknown error");
         console.error("[createWorkspace] Initial message failed:", errorMsg);
         showErrorToast("Message", errorMsg);
       }
@@ -972,15 +916,9 @@ function WorkspaceScreenInner({
     if (!result.success) {
       const err = result.error;
       const errorMsg =
-        typeof err === "string"
-          ? err
-          : err?.type === "unknown"
-            ? err.raw
-            : (err?.type ?? "Unknown error");
+        typeof err === "string" ? err : err?.type === "unknown" ? err.raw : (err?.type ?? "Unknown error");
       console.error("[sendMessage] Validation failed:", errorMsg);
-      setTimeline((current) =>
-        applyChatEvent(current, { type: "error", error: errorMsg } as WorkspaceChatEvent)
-      );
+      setTimeline((current) => applyChatEvent(current, { type: "error", error: errorMsg } as WorkspaceChatEvent));
 
       if (wasEditing) {
         setEditingMessage(editingMessage);
@@ -1140,15 +1078,7 @@ function WorkspaceScreenInner({
         </>
       );
     },
-    [
-      spacing,
-      handleDismissRawEvent,
-      workspaceId,
-      handleStartHere,
-      handleStartEdit,
-      canEditMessage,
-      editingMessage,
-    ]
+    [spacing, handleDismissRawEvent, workspaceId, handleStartHere, handleStartEdit, canEditMessage, editingMessage]
   );
 
   return (
@@ -1170,11 +1100,7 @@ function WorkspaceScreenInner({
                   padding: spacing.xl,
                 }}
               >
-                <Ionicons
-                  name="chatbubbles-outline"
-                  size={48}
-                  color={theme.colors.foregroundMuted}
-                />
+                <Ionicons name="chatbubbles-outline" size={48} color={theme.colors.foregroundMuted} />
                 <ThemedText
                   variant="titleSmall"
                   weight="semibold"
@@ -1276,11 +1202,7 @@ function WorkspaceScreenInner({
                   marginBottom: spacing.sm,
                 }}
               >
-                <ThemedText
-                  variant="titleSmall"
-                  weight="semibold"
-                  style={{ marginBottom: spacing.xs }}
-                >
+                <ThemedText variant="titleSmall" weight="semibold" style={{ marginBottom: spacing.xs }}>
                   {creationContext!.projectName}
                 </ThemedText>
                 <ThemedText variant="caption" style={{ color: theme.colors.foregroundMuted }}>
@@ -1298,15 +1220,8 @@ function WorkspaceScreenInner({
                     paddingVertical: spacing.xs,
                   }}
                 >
-                  <Ionicons
-                    name="settings-outline"
-                    size={14}
-                    color={theme.colors.foregroundMuted}
-                  />
-                  <ThemedText
-                    variant="caption"
-                    style={{ color: theme.colors.foregroundMuted, flex: 1 }}
-                  >
+                  <Ionicons name="settings-outline" size={14} color={theme.colors.foregroundMuted} />
+                  <ThemedText variant="caption" style={{ color: theme.colors.foregroundMuted, flex: 1 }}>
                     Advanced Options
                   </ThemedText>
                   <Ionicons
@@ -1439,9 +1354,7 @@ function WorkspaceScreenInner({
                   ✏️ Editing message
                 </ThemedText>
                 <Pressable onPress={handleCancelEdit}>
-                  <ThemedText style={{ color: "#1E40AF", fontSize: 14, fontWeight: "600" }}>
-                    Cancel
-                  </ThemedText>
+                  <ThemedText style={{ color: "#1E40AF", fontSize: 14, fontWeight: "600" }}>Cancel</ThemedText>
                 </Pressable>
               </View>
             )}
@@ -1477,18 +1390,13 @@ function WorkspaceScreenInner({
                     borderColor: theme.colors.border,
                     backgroundColor: theme.colors.surface,
                   },
-                  pressed && !settingsLoading
-                    ? { backgroundColor: theme.colors.surfaceSecondary }
-                    : null,
+                  pressed && !settingsLoading ? { backgroundColor: theme.colors.surfaceSecondary } : null,
                   settingsLoading ? { opacity: 0.6 } : null,
                 ]}
               >
                 <View style={{ flex: 1 }}>
                   <ThemedText weight="semibold">{modelSummary}</ThemedText>
-                  <ThemedText
-                    variant="caption"
-                    style={{ color: theme.colors.foregroundMuted, marginTop: 2 }}
-                  >
+                  <ThemedText variant="caption" style={{ color: theme.colors.foregroundMuted, marginTop: 2 }}>
                     {runSettingsDetails}
                   </ThemedText>
                 </View>
@@ -1591,21 +1499,13 @@ function WorkspaceScreenInner({
                   <Ionicons
                     name="checkmark"
                     size={24}
-                    color={
-                      isSending || !input.trim()
-                        ? theme.colors.foregroundMuted
-                        : theme.colors.foregroundInverted
-                    }
+                    color={isSending || !input.trim() ? theme.colors.foregroundMuted : theme.colors.foregroundInverted}
                   />
                 ) : (
                   <Ionicons
                     name="arrow-up"
                     size={24}
-                    color={
-                      isSending || !input.trim()
-                        ? theme.colors.foregroundMuted
-                        : theme.colors.foregroundInverted
-                    }
+                    color={isSending || !input.trim() ? theme.colors.foregroundMuted : theme.colors.foregroundInverted}
                   />
                 )}
               </Pressable>

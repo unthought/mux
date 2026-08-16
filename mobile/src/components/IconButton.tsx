@@ -1,7 +1,8 @@
 import type { JSX } from "react";
+import type { ReactNode } from "react";
 import type { PressableProps, ViewStyle } from "react-native";
 import { Pressable } from "react-native";
-import type { ReactNode } from "react";
+
 import { useTheme } from "../theme";
 import { assert } from "../utils/assert";
 
@@ -19,12 +20,7 @@ const SIZE_MAP: Record<IconButtonSize, number> = {
   md: 44,
 };
 
-export function IconButton({
-  icon,
-  variant = "ghost",
-  size = "md",
-  ...rest
-}: IconButtonProps): JSX.Element {
+export function IconButton({ icon, variant = "ghost", size = "md", ...rest }: IconButtonProps): JSX.Element {
   const theme = useTheme();
 
   const resolveVariantStyle = (): ViewStyle => {

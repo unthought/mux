@@ -1,17 +1,14 @@
+import { Ionicons } from "@expo/vector-icons";
 import type { JSX } from "react";
 import { useMemo, useState, useEffect } from "react";
 import { Modal, Pressable, ScrollView, StyleSheet, Switch, TextInput, View } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
-import { useTheme } from "../theme";
-import { ThemedText } from "./ThemedText";
+
 import { getThinkingPolicyForModel } from "@/common/utils/thinking/policy";
+
+import { useTheme } from "../theme";
 import type { ThinkingLevel, WorkspaceMode } from "../types/settings";
-import {
-  formatModelSummary,
-  getModelDisplayName,
-  isKnownModelId,
-  listKnownModels,
-} from "../utils/modelCatalog";
+import { formatModelSummary, getModelDisplayName, isKnownModelId, listKnownModels } from "../utils/modelCatalog";
+import { ThemedText } from "./ThemedText";
 
 const ALL_MODELS = listKnownModels();
 
@@ -64,12 +61,7 @@ export function RunSettingsSheet(props: RunSettingsSheetProps): JSX.Element {
   };
 
   return (
-    <Modal
-      visible={props.visible}
-      animationType="slide"
-      presentationStyle="pageSheet"
-      onRequestClose={props.onClose}
-    >
+    <Modal visible={props.visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={props.onClose}>
       <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
         <View style={styles.header}>
           <ThemedText variant="titleMedium" weight="semibold" style={styles.headerTitle}>
@@ -131,9 +123,7 @@ export function RunSettingsSheet(props: RunSettingsSheetProps): JSX.Element {
                         styles.chip,
                         {
                           backgroundColor:
-                            props.selectedModel === modelId
-                              ? theme.colors.accent
-                              : theme.colors.surfaceSecondary,
+                            props.selectedModel === modelId ? theme.colors.accent : theme.colors.surfaceSecondary,
                           opacity: pressed ? 0.8 : 1,
                         },
                       ]}
@@ -171,18 +161,13 @@ export function RunSettingsSheet(props: RunSettingsSheetProps): JSX.Element {
                       style={({ pressed }) => [
                         styles.listItem,
                         {
-                          backgroundColor: pressed
-                            ? theme.colors.surfaceSecondary
-                            : theme.colors.background,
+                          backgroundColor: pressed ? theme.colors.surfaceSecondary : theme.colors.background,
                         },
                       ]}
                     >
                       <View style={{ flex: 1 }}>
                         <ThemedText weight="semibold">{getModelDisplayName(item.id)}</ThemedText>
-                        <ThemedText
-                          variant="caption"
-                          style={{ color: theme.colors.foregroundMuted }}
-                        >
+                        <ThemedText variant="caption" style={{ color: theme.colors.foregroundMuted }}>
                           {formatModelSummary(item.id)}
                         </ThemedText>
                       </View>
@@ -217,11 +202,7 @@ export function RunSettingsSheet(props: RunSettingsSheetProps): JSX.Element {
               >
                 <View style={styles.sectionHeading}>
                   <ThemedText weight="semibold">Context window</ThemedText>
-                  <Ionicons
-                    name="information-circle-outline"
-                    size={16}
-                    color={theme.colors.foregroundMuted}
-                  />
+                  <Ionicons name="information-circle-outline" size={16} color={theme.colors.foregroundMuted} />
                 </View>
                 <ThemedText variant="caption" style={{ color: theme.colors.foregroundMuted }}>
                   Use Anthropic's beta 1M context window for supported Sonnet 4 / 4.5 models.
@@ -251,8 +232,7 @@ export function RunSettingsSheet(props: RunSettingsSheetProps): JSX.Element {
                   onPress={() => props.onSelectMode(modeOption)}
                   style={({ pressed }) => {
                     const isSelected = props.mode === modeOption;
-                    const selectedFill =
-                      modeOption === "plan" ? theme.colors.planMode : theme.colors.execMode;
+                    const selectedFill = modeOption === "plan" ? theme.colors.planMode : theme.colors.execMode;
                     return [
                       styles.modeCard,
                       {
@@ -268,9 +248,7 @@ export function RunSettingsSheet(props: RunSettingsSheetProps): JSX.Element {
                     style={{
                       textTransform: "capitalize",
                       color:
-                        props.mode === modeOption
-                          ? theme.colors.foregroundInverted
-                          : theme.colors.foregroundPrimary,
+                        props.mode === modeOption ? theme.colors.foregroundInverted : theme.colors.foregroundPrimary,
                     }}
                   >
                     {modeOption}
@@ -278,10 +256,7 @@ export function RunSettingsSheet(props: RunSettingsSheetProps): JSX.Element {
                   <ThemedText
                     variant="caption"
                     style={{
-                      color:
-                        props.mode === modeOption
-                          ? theme.colors.foregroundInverted
-                          : theme.colors.foregroundMuted,
+                      color: props.mode === modeOption ? theme.colors.foregroundInverted : theme.colors.foregroundMuted,
                     }}
                   >
                     {modeOption === "plan" ? "Plan before executing" : "Act directly"}
@@ -307,9 +282,7 @@ export function RunSettingsSheet(props: RunSettingsSheetProps): JSX.Element {
                     style={({ pressed }) => [
                       styles.levelChip,
                       {
-                        backgroundColor: active
-                          ? theme.colors.accent
-                          : theme.colors.surfaceSecondary,
+                        backgroundColor: active ? theme.colors.accent : theme.colors.surfaceSecondary,
                         opacity: locked ? 1 : pressed ? 0.85 : 1,
                       },
                     ]}
@@ -317,9 +290,7 @@ export function RunSettingsSheet(props: RunSettingsSheetProps): JSX.Element {
                     <ThemedText
                       variant="caption"
                       style={{
-                        color: active
-                          ? theme.colors.foregroundInverted
-                          : theme.colors.foregroundPrimary,
+                        color: active ? theme.colors.foregroundInverted : theme.colors.foregroundPrimary,
                         textTransform: "uppercase",
                         fontWeight: "600",
                       }}

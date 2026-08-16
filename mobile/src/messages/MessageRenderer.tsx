@@ -1,4 +1,8 @@
+import { Ionicons } from "@expo/vector-icons";
+import * as Clipboard from "expo-clipboard";
+import * as Haptics from "expo-haptics";
 import type { JSX } from "react";
+import { useMemo, useState, useEffect, useRef, useCallback } from "react";
 import {
   Image,
   View,
@@ -13,26 +17,23 @@ import {
   TouchableOpacity,
   Keyboard,
 } from "react-native";
-import { useMemo, useState, useEffect, useRef, useCallback } from "react";
-import * as Clipboard from "expo-clipboard";
-import { MarkdownMessageBody } from "../components/MarkdownMessageBody";
-import { hasRenderableMarkdown } from "./markdownUtils";
-import { Ionicons } from "@expo/vector-icons";
-import { Surface } from "../components/Surface";
-import { ThemedText } from "../components/ThemedText";
+
 import { AskUserQuestionToolCard } from "../components/AskUserQuestionToolCard";
+import { MarkdownMessageBody } from "../components/MarkdownMessageBody";
 import { ProposePlanCard } from "../components/ProposePlanCard";
 import { ProposePlanToolCard } from "../components/ProposePlanToolCard";
-import { TodoToolCard } from "../components/TodoToolCard";
 import { StatusSetToolCard } from "../components/StatusSetToolCard";
+import { Surface } from "../components/Surface";
+import { ThemedText } from "../components/ThemedText";
 import type { TodoItem } from "../components/TodoItemView";
+import { TodoToolCard } from "../components/TodoToolCard";
 import { useTheme } from "../theme";
 import type { DisplayedMessage } from "../types";
 import { assert } from "../utils/assert";
+import { getModelDisplayName } from "../utils/modelCatalog";
+import { hasRenderableMarkdown } from "./markdownUtils";
 import { MessageBubble, type MessageBubbleButtonConfig } from "./MessageBubble";
 import { renderSpecializedToolCard, type ToolCardViewModel } from "./tools/toolRenderers";
-import { getModelDisplayName } from "../utils/modelCatalog";
-import * as Haptics from "expo-haptics";
 
 /**
  * Streaming cursor component - pulsing animation
@@ -90,13 +91,7 @@ export function MessageRenderer({
 }: MessageRendererProps): JSX.Element | null {
   switch (message.type) {
     case "assistant":
-      return (
-        <AssistantMessageCard
-          message={message}
-          workspaceId={workspaceId}
-          onStartHere={onStartHere}
-        />
-      );
+      return <AssistantMessageCard message={message} workspaceId={workspaceId} onStartHere={onStartHere} />;
     case "user":
       return <UserMessageCard message={message} onEditMessage={onEditMessage} canEdit={canEdit} />;
     case "reasoning":
@@ -108,17 +103,9 @@ export function MessageRenderer({
     case "workspace-init":
       return <WorkspaceInitMessageCard message={message} />;
     case "plan-display":
-      return (
-        <PlanDisplayMessageCard
-          message={message}
-          workspaceId={workspaceId}
-          onStartHere={onStartHere}
-        />
-      );
+      return <PlanDisplayMessageCard message={message} workspaceId={workspaceId} onStartHere={onStartHere} />;
     case "tool":
-      return (
-        <ToolMessageCard message={message} workspaceId={workspaceId} onStartHere={onStartHere} />
-      );
+      return <ToolMessageCard message={message} workspaceId={workspaceId} onStartHere={onStartHere} />;
     default:
       // Exhaustiveness check
       assert(false, `Unsupported message type: ${(message as DisplayedMessage).type}`);
@@ -271,12 +258,7 @@ function AssistantMessageCard({
       </MessageBubble>
 
       {Platform.OS !== "ios" && (
-        <Modal
-          visible={menuVisible}
-          transparent
-          animationType="fade"
-          onRequestClose={() => setMenuVisible(false)}
-        >
+        <Modal visible={menuVisible} transparent animationType="fade" onRequestClose={() => setMenuVisible(false)}>
           <Pressable
             style={{
               flex: 1,
@@ -399,9 +381,7 @@ function UserMessageCard({
     }
 
     // Mobile UI only renders image attachments (non-image attachments are ignored for now).
-    const imageParts = fileParts.filter((part) =>
-      part.mediaType.toLowerCase().startsWith("image/")
-    );
+    const imageParts = fileParts.filter((part) => part.mediaType.toLowerCase().startsWith("image/"));
     if (imageParts.length === 0) {
       return null;
     }
@@ -463,11 +443,7 @@ function UserMessageCard({
       );
     }
 
-    return (
-      <ThemedText style={{ marginTop: theme.spacing.sm }}>
-        {message.content || "(No content)"}
-      </ThemedText>
-    );
+    return <ThemedText style={{ marginTop: theme.spacing.sm }}>{message.content || "(No content)"}</ThemedText>;
   };
 
   return (
@@ -481,12 +457,7 @@ function UserMessageCard({
       </MessageBubble>
 
       {Platform.OS !== "ios" && (
-        <Modal
-          visible={menuVisible}
-          transparent
-          animationType="fade"
-          onRequestClose={() => setMenuVisible(false)}
-        >
+        <Modal visible={menuVisible} transparent animationType="fade" onRequestClose={() => setMenuVisible(false)}>
           <TouchableOpacity
             style={{
               flex: 1,
@@ -538,11 +509,7 @@ function UserMessageCard({
   );
 }
 
-function ReasoningMessageCard({
-  message,
-}: {
-  message: DisplayedMessage & { type: "reasoning" };
-}): JSX.Element {
+function ReasoningMessageCard({ message }: { message: DisplayedMessage & { type: "reasoning" } }): JSX.Element {
   const theme = useTheme();
   const isStreaming = message.isStreaming === true;
   const isLastPart = message.isLastPartOfMessage === true;
@@ -620,9 +587,7 @@ function ReasoningMessageCard({
             {isStreaming && <StreamingCursor />}
           </View>
           {!isStreaming && (
-            <Text style={{ color: theme.colors.thinkingMode, opacity: 0.6 }}>
-              {isExpanded ? "▾" : "▸"}
-            </Text>
+            <Text style={{ color: theme.colors.thinkingMode, opacity: 0.6 }}>{isExpanded ? "▾" : "▸"}</Text>
           )}
         </View>
       </Pressable>
@@ -642,11 +607,7 @@ function ReasoningMessageCard({
   );
 }
 
-function StreamErrorMessageCard({
-  message,
-}: {
-  message: DisplayedMessage & { type: "stream-error" };
-}): JSX.Element {
+function StreamErrorMessageCard({ message }: { message: DisplayedMessage & { type: "stream-error" } }): JSX.Element {
   const theme = useTheme();
   const showCount = message.errorCount !== undefined && message.errorCount > 1;
 
@@ -674,9 +635,7 @@ function StreamErrorMessageCard({
         }}
       >
         <View style={{ flexDirection: "row", alignItems: "center", gap: theme.spacing.xs }}>
-          <ThemedText style={{ color: theme.colors.danger, fontSize: 16, lineHeight: 16 }}>
-            ●
-          </ThemedText>
+          <ThemedText style={{ color: theme.colors.danger, fontSize: 16, lineHeight: 16 }}>●</ThemedText>
           <ThemedText variant="label" weight="semibold" style={{ color: theme.colors.danger }}>
             Stream Error
           </ThemedText>
@@ -931,9 +890,7 @@ function PlanDisplayMessageCard({
 
   const handleStartHereWithPlan = onStartHere
     ? async () => {
-        const content = /^#\s+/m.test(message.content)
-          ? message.content
-          : `# ${title}\n\n${message.content}`;
+        const content = /^#\s+/m.test(message.content) ? message.content : `# ${title}\n\n${message.content}`;
         await onStartHere(content);
       }
     : undefined;
@@ -952,9 +909,7 @@ function PlanDisplayMessageCard({
 /**
  * Type guard for todo_write tool
  */
-function isTodoWriteTool(
-  message: DisplayedMessage & { type: "tool" }
-): message is DisplayedMessage & {
+function isTodoWriteTool(message: DisplayedMessage & { type: "tool" }): message is DisplayedMessage & {
   type: "tool";
   args: { todos: TodoItem[] };
 } {
@@ -970,9 +925,7 @@ function isTodoWriteTool(
 /**
  * Type guard for status_set tool
  */
-function isStatusSetTool(
-  message: DisplayedMessage & { type: "tool" }
-): message is DisplayedMessage & {
+function isStatusSetTool(message: DisplayedMessage & { type: "tool" }): message is DisplayedMessage & {
   type: "tool";
   args: { emoji: string; message: string; url?: string };
 } {
@@ -1041,10 +994,7 @@ function ToolMessageCard({
   }
 
   const theme = useTheme();
-  const specializedModel = useMemo<ToolCardViewModel | null>(
-    () => renderSpecializedToolCard(message),
-    [message]
-  );
+  const specializedModel = useMemo<ToolCardViewModel | null>(() => renderSpecializedToolCard(message), [message]);
   const viewModel = useMemo<ToolCardViewModel>(
     () => specializedModel ?? createFallbackToolModel(message),
     [specializedModel, message]
@@ -1074,10 +1024,7 @@ function ToolMessageCard({
       >
         <Text style={{ fontSize: 18 }}>{viewModel.icon}</Text>
         <View style={{ flex: 1, gap: 2 }}>
-          <ThemedText
-            variant="caption"
-            style={{ textTransform: "uppercase", color: theme.colors.foregroundSecondary }}
-          >
+          <ThemedText variant="caption" style={{ textTransform: "uppercase", color: theme.colors.foregroundSecondary }}>
             {viewModel.caption}
           </ThemedText>
           <Text
@@ -1170,8 +1117,7 @@ function createFallbackToolModel(message: DisplayedMessage & { type: "tool" }): 
     subtitle: "No specialized renderer available",
     content: (
       <ThemedText variant="muted">
-        No specialized renderer is available for this tool. Use the raw payload to inspect the
-        arguments.
+        No specialized renderer is available for this tool. Use the raw payload to inspect the arguments.
       </ThemedText>
     ),
     defaultExpanded: true,
@@ -1208,10 +1154,7 @@ interface ToolStatusVisual {
   border: string;
 }
 
-function getToolStatusVisual(
-  theme: ReturnType<typeof useTheme>,
-  status: ToolStatus
-): ToolStatusVisual {
+function getToolStatusVisual(theme: ReturnType<typeof useTheme>, status: ToolStatus): ToolStatusVisual {
   switch (status) {
     case "completed":
       return {
@@ -1305,11 +1248,7 @@ function ModelBadge(props: { modelId?: string | null }): JSX.Element | null {
         backgroundColor: "rgba(255, 255, 255, 0.04)",
       }}
     >
-      <ThemedText
-        variant="caption"
-        weight="semibold"
-        style={{ color: theme.colors.foregroundPrimary }}
-      >
+      <ThemedText variant="caption" weight="semibold" style={{ color: theme.colors.foregroundPrimary }}>
         {displayName}
       </ThemedText>
     </View>

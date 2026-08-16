@@ -1,3 +1,5 @@
+import { Ionicons } from "@expo/vector-icons";
+import { useRouter } from "expo-router";
 import type { JSX } from "react";
 import { useCallback, useMemo, useState } from "react";
 import {
@@ -10,16 +12,15 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
-import { useRouter } from "expo-router";
+
+import { IconButton } from "../components/IconButton";
+import { RenameWorkspaceModal } from "../components/RenameWorkspaceModal";
+import { SecretsModal } from "../components/SecretsModal";
+import { Surface } from "../components/Surface";
+import { ThemedText } from "../components/ThemedText";
+import { WorkspaceActivityIndicator } from "../components/WorkspaceActivityIndicator";
 import { useProjectsData } from "../hooks/useProjectsData";
 import { useTheme } from "../theme";
-import { ThemedText } from "../components/ThemedText";
-import { Surface } from "../components/Surface";
-import { IconButton } from "../components/IconButton";
-import { SecretsModal } from "../components/SecretsModal";
-import { RenameWorkspaceModal } from "../components/RenameWorkspaceModal";
-import { WorkspaceActivityIndicator } from "../components/WorkspaceActivityIndicator";
 import type { FrontendWorkspaceMetadata, Secret, WorkspaceActivitySnapshot } from "../types";
 
 interface WorkspaceListItem {
@@ -54,10 +55,7 @@ function parseTimestamp(value?: string): number {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
-function calculateLastActive(
-  metadata: FrontendWorkspaceMetadata,
-  activity?: WorkspaceActivitySnapshot
-): number {
+function calculateLastActive(metadata: FrontendWorkspaceMetadata, activity?: WorkspaceActivitySnapshot): number {
   if (activity && Number.isFinite(activity.recency)) {
     return activity.recency;
   }
@@ -186,16 +184,13 @@ export function ProjectsScreen(): JSX.Element {
         const hasWorkspaceMatch = group.workspaces.length > 0;
         return haystack.includes(normalizedSearch) || hasWorkspaceMatch;
       })
-      .sort((a, b) =>
-        a.displayName.localeCompare(b.displayName, undefined, { sensitivity: "base" })
-      );
+      .sort((a, b) => a.displayName.localeCompare(b.displayName, undefined, { sensitivity: "base" }));
 
     return results;
   }, [projectsQuery.data, workspacesQuery.data, activityMap, search]);
 
   const isLoading = projectsQuery.isLoading || workspacesQuery.isLoading || activityQuery.isLoading;
-  const isRefreshing =
-    projectsQuery.isRefetching || workspacesQuery.isRefetching || activityQuery.isRefetching;
+  const isRefreshing = projectsQuery.isRefetching || workspacesQuery.isRefetching || activityQuery.isRefetching;
   const hasError = Boolean(projectsQuery.error ?? workspacesQuery.error ?? activityQuery.error);
   const errorMessage =
     (projectsQuery.error instanceof Error && projectsQuery.error.message) ||
@@ -273,8 +268,7 @@ export function ProjectsScreen(): JSX.Element {
                 const errorMsg = result.error ?? "Failed to delete workspace";
                 // Check if it's a "dirty workspace" error
                 const isDirtyError =
-                  errorMsg.toLowerCase().includes("uncommitted") ||
-                  errorMsg.toLowerCase().includes("unpushed");
+                  errorMsg.toLowerCase().includes("uncommitted") || errorMsg.toLowerCase().includes("unpushed");
 
                 if (isDirtyError) {
                   // Show force delete option
@@ -424,11 +418,7 @@ export function ProjectsScreen(): JSX.Element {
           paddingBottom: spacing.lg,
         }}
         refreshControl={
-          <RefreshControl
-            refreshing={isRefreshing}
-            onRefresh={onRefresh}
-            tintColor={theme.colors.accent}
-          />
+          <RefreshControl refreshing={isRefreshing} onRefresh={onRefresh} tintColor={theme.colors.accent} />
         }
         keyboardShouldPersistTaps="handled"
       >
@@ -513,9 +503,7 @@ export function ProjectsScreen(): JSX.Element {
           ) : (
             groupedProjects.map((group) => (
               <Surface key={group.path} variant="plain" style={{ padding: spacing.md }}>
-                <View
-                  style={{ flexDirection: "row", alignItems: "center", marginBottom: spacing.sm }}
-                >
+                <View style={{ flexDirection: "row", alignItems: "center", marginBottom: spacing.sm }}>
                   <View style={{ flex: 1 }}>
                     <ThemedText variant="titleSmall" weight="semibold">
                       {group.displayName}
@@ -531,13 +519,7 @@ export function ProjectsScreen(): JSX.Element {
                   </View>
                   <View style={{ marginRight: spacing.xs }}>
                     <IconButton
-                      icon={
-                        <Ionicons
-                          name="key-outline"
-                          size={16}
-                          color={theme.colors.foregroundMuted}
-                        />
-                      }
+                      icon={<Ionicons name="key-outline" size={16} color={theme.colors.foregroundMuted} />}
                       onPress={() => void handleOpenSecrets(group.path, group.displayName)}
                       size="sm"
                       variant="ghost"
@@ -554,8 +536,7 @@ export function ProjectsScreen(): JSX.Element {
                     }}
                   >
                     <ThemedText variant="caption" weight="medium">
-                      {group.workspaces.length}{" "}
-                      {group.workspaces.length === 1 ? "workspace" : "workspaces"}
+                      {group.workspaces.length} {group.workspaces.length === 1 ? "workspace" : "workspaces"}
                     </ThemedText>
                   </View>
                 </View>

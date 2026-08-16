@@ -1,7 +1,8 @@
 import type { JSX } from "react";
+import { useMemo } from "react";
 import type { TextProps, TextStyle } from "react-native";
 import { Text } from "react-native";
-import { useMemo } from "react";
+
 import { useTheme } from "../theme";
 import type { Theme } from "../theme";
 import { assert } from "../utils/assert";
@@ -102,9 +103,7 @@ export function ThemedText({
     return mapper(theme);
   }, [theme, variant]);
 
-  const weightStyle: TextStyle | undefined = weight
-    ? { fontWeight: theme.typography.weights[weight] }
-    : undefined;
+  const weightStyle: TextStyle | undefined = weight ? { fontWeight: theme.typography.weights[weight] } : undefined;
 
   const alignStyle: TextStyle | undefined = align ? { textAlign: align } : undefined;
 

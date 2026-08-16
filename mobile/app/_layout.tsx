@@ -1,15 +1,16 @@
-import type { JSX } from "react";
-import { Stack } from "expo-router";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { useMemo } from "react";
-import { SafeAreaProvider } from "react-native-safe-area-context";
+import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
+import type { JSX } from "react";
+import { useMemo } from "react";
 import { View } from "react-native";
-import { ThemeProvider, useTheme } from "../src/theme";
+import { SafeAreaProvider } from "react-native-safe-area-context";
+
+import { AppConfigProvider } from "../src/contexts/AppConfigContext";
 import { LiveBashOutputProvider } from "../src/contexts/LiveBashOutputContext";
 import { WorkspaceChatProvider } from "../src/contexts/WorkspaceChatContext";
-import { AppConfigProvider } from "../src/contexts/AppConfigContext";
 import { ORPCProvider } from "../src/orpc/react";
+import { ThemeProvider, useTheme } from "../src/theme";
 
 function AppFrame(): JSX.Element {
   const theme = useTheme();

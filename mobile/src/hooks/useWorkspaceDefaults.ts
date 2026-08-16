@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+
 import * as Storage from "../lib/storage";
 import type { ThinkingLevel, WorkspaceMode } from "../types/settings";
 import { DEFAULT_MODEL_ID, assertKnownModelId, isKnownModelId } from "../utils/modelCatalog";
@@ -49,13 +50,7 @@ async function writeGlobalMode(mode: WorkspaceMode): Promise<void> {
 async function readGlobalReasoning(): Promise<ThinkingLevel> {
   try {
     const value = await Storage.getItem(STORAGE_KEY_REASONING);
-    if (
-      value === "off" ||
-      value === "low" ||
-      value === "medium" ||
-      value === "high" ||
-      value === "xhigh"
-    ) {
+    if (value === "off" || value === "low" || value === "medium" || value === "high" || value === "xhigh") {
       return value;
     }
     return DEFAULT_REASONING;
@@ -146,8 +141,7 @@ export function useWorkspaceDefaults(): {
   isLoading: boolean;
 } {
   const [defaultMode, setDefaultModeState] = useState<WorkspaceMode>(DEFAULT_MODE);
-  const [defaultReasoningLevel, setDefaultReasoningLevelState] =
-    useState<ThinkingLevel>(DEFAULT_REASONING);
+  const [defaultReasoningLevel, setDefaultReasoningLevelState] = useState<ThinkingLevel>(DEFAULT_REASONING);
   const [defaultModel, setDefaultModelState] = useState<string>(DEFAULT_MODEL);
   const [use1MContext, setUse1MContextState] = useState<boolean>(DEFAULT_1M_CONTEXT);
   const [isLoading, setIsLoading] = useState(true);
@@ -155,20 +149,17 @@ export function useWorkspaceDefaults(): {
   // Load defaults on mount
   useEffect(() => {
     let cancelled = false;
-    Promise.all([
-      readGlobalMode(),
-      readGlobalReasoning(),
-      readGlobalModel(),
-      readGlobal1MContext(),
-    ]).then(([mode, reasoning, model, context1M]) => {
-      if (!cancelled) {
-        setDefaultModeState(mode);
-        setDefaultReasoningLevelState(reasoning);
-        setDefaultModelState(model);
-        setUse1MContextState(context1M);
-        setIsLoading(false);
+    Promise.all([readGlobalMode(), readGlobalReasoning(), readGlobalModel(), readGlobal1MContext()]).then(
+      ([mode, reasoning, model, context1M]) => {
+        if (!cancelled) {
+          setDefaultModeState(mode);
+          setDefaultReasoningLevelState(reasoning);
+          setDefaultModelState(model);
+          setUse1MContextState(context1M);
+          setIsLoading(false);
+        }
       }
-    });
+    );
     return () => {
       cancelled = true;
     };

@@ -1,9 +1,10 @@
-import type { JSX } from "react";
 import Slider from "@react-native-community/slider";
+import type { JSX } from "react";
 import { View } from "react-native";
+
+import { useThinkingLevel, type ThinkingLevel } from "../contexts/ThinkingContext";
 import { useTheme } from "../theme";
 import { ThemedText } from "./ThemedText";
-import { useThinkingLevel, type ThinkingLevel } from "../contexts/ThinkingContext";
 
 const LEVELS: ThinkingLevel[] = ["off", "low", "medium", "high", "xhigh"];
 

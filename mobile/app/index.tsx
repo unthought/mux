@@ -1,7 +1,8 @@
-import type { JSX } from "react";
-import { Stack, useRouter } from "expo-router";
-import { Pressable } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { Stack, useRouter } from "expo-router";
+import type { JSX } from "react";
+import { Pressable } from "react-native";
+
 import ProjectsScreen from "../src/screens/ProjectsScreen";
 
 export default function ProjectsRoute(): JSX.Element {

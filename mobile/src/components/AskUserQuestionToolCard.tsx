@@ -9,10 +9,11 @@ import type {
   AskUserQuestionToolSuccessResult,
   ToolErrorResult,
 } from "@/common/types/tools";
+
+import { useORPC } from "../orpc/react";
+import { useTheme } from "../theme";
 import { Surface } from "./Surface";
 import { ThemedText } from "./ThemedText";
-import { useTheme } from "../theme";
-import { useORPC } from "../orpc/react";
 
 type ToolStatus = "pending" | "executing" | "completed" | "failed" | "interrupted";
 
@@ -192,10 +193,7 @@ export function AskUserQuestionToolCard(props: {
   const spacing = theme.spacing;
   const client = useORPC();
 
-  const parsedArgs = useMemo(
-    () => (isAskUserQuestionToolArgs(props.args) ? props.args : null),
-    [props.args]
-  );
+  const parsedArgs = useMemo(() => (isAskUserQuestionToolArgs(props.args) ? props.args : null), [props.args]);
 
   const resultUnwrapped = useMemo(() => unwrapJsonContainer(props.result), [props.result]);
 
@@ -309,9 +307,7 @@ export function AskUserQuestionToolCard(props: {
         ...current,
         [questionText]: {
           ...draft,
-          selected: draft.selected.includes(OTHER_VALUE)
-            ? draft.selected
-            : [...draft.selected, OTHER_VALUE],
+          selected: draft.selected.includes(OTHER_VALUE) ? draft.selected : [...draft.selected, OTHER_VALUE],
           otherText: text,
         },
       };
@@ -442,19 +438,14 @@ export function AskUserQuestionToolCard(props: {
                           paddingVertical: spacing.xs,
                           paddingHorizontal: spacing.sm,
                           borderRadius: theme.radii.sm,
-                          backgroundColor: pressed
-                            ? theme.colors.surfaceSecondary
-                            : theme.colors.surfaceSunken,
+                          backgroundColor: pressed ? theme.colors.surfaceSecondary : theme.colors.surfaceSunken,
                           opacity: submitted || props.status !== "executing" ? 0.6 : 1,
                         })}
                       >
                         <Text style={{ width: 20 }}>{indicator}</Text>
                         <View style={{ flex: 1, gap: 2 }}>
                           <ThemedText weight="semibold">{opt.label}</ThemedText>
-                          <ThemedText
-                            variant="caption"
-                            style={{ color: theme.colors.foregroundSecondary }}
-                          >
+                          <ThemedText variant="caption" style={{ color: theme.colors.foregroundSecondary }}>
                             {opt.description}
                           </ThemedText>
                         </View>
@@ -478,19 +469,14 @@ export function AskUserQuestionToolCard(props: {
                             paddingVertical: spacing.xs,
                             paddingHorizontal: spacing.sm,
                             borderRadius: theme.radii.sm,
-                            backgroundColor: pressed
-                              ? theme.colors.surfaceSecondary
-                              : theme.colors.surfaceSunken,
+                            backgroundColor: pressed ? theme.colors.surfaceSecondary : theme.colors.surfaceSunken,
                             opacity: submitted || props.status !== "executing" ? 0.6 : 1,
                           })}
                         >
                           <Text style={{ width: 20 }}>{indicator}</Text>
                           <View style={{ flex: 1, gap: 2 }}>
                             <ThemedText weight="semibold">Other</ThemedText>
-                            <ThemedText
-                              variant="caption"
-                              style={{ color: theme.colors.foregroundSecondary }}
-                            >
+                            <ThemedText variant="caption" style={{ color: theme.colors.foregroundSecondary }}>
                               Provide your own answer
                             </ThemedText>
                           </View>

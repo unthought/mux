@@ -1,8 +1,9 @@
 import type { JSX } from "react";
 import { Text, View } from "react-native";
+
+import { useTheme } from "../theme";
 import { Surface } from "./Surface";
 import { ThemedText } from "./ThemedText";
-import { useTheme } from "../theme";
 
 interface StatusSetToolCardProps {
   emoji: string;
@@ -44,10 +45,7 @@ export function StatusSetToolCard({ emoji, message, status }: StatusSetToolCardP
     >
       <View style={{ flexDirection: "row", alignItems: "center", gap: theme.spacing.sm }}>
         <Text style={{ fontSize: 18 }}>{emoji}</Text>
-        <ThemedText
-          variant="body"
-          style={{ flex: 1, fontStyle: "italic", color: theme.colors.foregroundSecondary }}
-        >
+        <ThemedText variant="body" style={{ flex: 1, fontStyle: "italic", color: theme.colors.foregroundSecondary }}>
           {message}
         </ThemedText>
       </View>

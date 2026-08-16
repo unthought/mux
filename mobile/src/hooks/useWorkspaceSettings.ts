@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+
 import * as Storage from "../lib/storage";
 import type { ThinkingLevel, WorkspaceMode } from "../types/settings";
 import { DEFAULT_MODEL_ID, assertKnownModelId, isKnownModelId } from "../utils/modelCatalog";
@@ -131,13 +132,7 @@ function validateMode(value: string): WorkspaceMode | null {
 }
 
 function validateThinkingLevel(value: string): ThinkingLevel | null {
-  if (
-    value === "off" ||
-    value === "low" ||
-    value === "medium" ||
-    value === "high" ||
-    value === "xhigh"
-  ) {
+  if (value === "off" || value === "low" || value === "medium" || value === "high" || value === "xhigh") {
     return value;
   }
   return null;
@@ -188,12 +183,7 @@ export function useWorkspaceSettings(workspaceId: string): {
           readSetting(workspaceId, "mode", DEFAULT_MODE, validateMode),
           readSetting(workspaceId, "reasoning", DEFAULT_THINKING_LEVEL, validateThinkingLevel),
           readSetting(workspaceId, "model", DEFAULT_MODEL, validateModel),
-          readSetting(
-            workspaceId,
-            "use1MContext",
-            DEFAULT_1M_CONTEXT,
-            (v) => validateBoolean(v) ?? DEFAULT_1M_CONTEXT
-          ),
+          readSetting(workspaceId, "use1MContext", DEFAULT_1M_CONTEXT, (v) => validateBoolean(v) ?? DEFAULT_1M_CONTEXT),
         ]);
 
         if (!cancelled) {

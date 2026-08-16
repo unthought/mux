@@ -1,3 +1,4 @@
+import { Ionicons } from "@expo/vector-icons";
 import type { JSX } from "react";
 import { useState, useEffect } from "react";
 import {
@@ -9,10 +10,10 @@ import {
   Platform,
   ActivityIndicator,
 } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
+
 import { useTheme } from "../theme";
-import { ThemedText } from "./ThemedText";
 import { validateWorkspaceName } from "../utils/workspaceValidation";
+import { ThemedText } from "./ThemedText";
 
 interface RenameWorkspaceModalProps {
   visible: boolean;
@@ -92,13 +93,7 @@ export function RenameWorkspaceModal({
   const canSubmit = !error && newName.trim() !== currentName && !isSubmitting;
 
   return (
-    <Modal
-      visible={visible}
-      transparent
-      animationType="fade"
-      onRequestClose={onClose}
-      statusBarTranslucent
-    >
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose} statusBarTranslucent>
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : undefined}
         style={{
@@ -144,20 +139,14 @@ export function RenameWorkspaceModal({
                 marginBottom: spacing.lg,
               }}
             >
-              <ThemedText
-                variant="titleMedium"
-                weight="semibold"
-                style={{ color: theme.colors.foregroundPrimary }}
-              >
+              <ThemedText variant="titleMedium" weight="semibold" style={{ color: theme.colors.foregroundPrimary }}>
                 Rename Workspace
               </ThemedText>
               <TouchableOpacity onPress={onClose} disabled={isSubmitting}>
                 <Ionicons
                   name="close"
                   size={24}
-                  color={
-                    isSubmitting ? theme.colors.foregroundMuted : theme.colors.foregroundPrimary
-                  }
+                  color={isSubmitting ? theme.colors.foregroundMuted : theme.colors.foregroundPrimary}
                 />
               </TouchableOpacity>
             </View>
@@ -170,11 +159,7 @@ export function RenameWorkspaceModal({
               >
                 Project
               </ThemedText>
-              <ThemedText
-                variant="body"
-                weight="medium"
-                style={{ color: theme.colors.foregroundPrimary }}
-              >
+              <ThemedText variant="body" weight="medium" style={{ color: theme.colors.foregroundPrimary }}>
                 {projectName}
               </ThemedText>
             </View>
@@ -187,11 +172,7 @@ export function RenameWorkspaceModal({
               >
                 Current Name
               </ThemedText>
-              <ThemedText
-                variant="body"
-                weight="medium"
-                style={{ color: theme.colors.foregroundMuted }}
-              >
+              <ThemedText variant="body" weight="medium" style={{ color: theme.colors.foregroundMuted }}>
                 {currentName}
               </ThemedText>
             </View>
@@ -249,10 +230,7 @@ export function RenameWorkspaceModal({
 
               {/* Validation Hint */}
               {!error && newName.trim() !== currentName && (
-                <ThemedText
-                  variant="caption"
-                  style={{ marginTop: spacing.sm, color: theme.colors.foregroundMuted }}
-                >
+                <ThemedText variant="caption" style={{ marginTop: spacing.sm, color: theme.colors.foregroundMuted }}>
                   Only lowercase letters, digits, underscore, and hyphen (1-64 characters)
                 </ThemedText>
               )}
@@ -280,11 +258,7 @@ export function RenameWorkspaceModal({
                   opacity: isSubmitting ? 0.5 : 1,
                 }}
               >
-                <ThemedText
-                  variant="body"
-                  weight="semibold"
-                  style={{ color: theme.colors.foregroundPrimary }}
-                >
+                <ThemedText variant="body" weight="semibold" style={{ color: theme.colors.foregroundPrimary }}>
                   Cancel
                 </ThemedText>
               </TouchableOpacity>

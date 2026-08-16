@@ -1,15 +1,8 @@
-import React, { useEffect, useRef } from "react";
-import {
-  KeyboardAvoidingView,
-  Modal,
-  Platform,
-  ScrollView,
-  TextInput,
-  TouchableOpacity,
-  View,
-} from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import React, { useEffect, useRef } from "react";
+import { KeyboardAvoidingView, Modal, Platform, ScrollView, TextInput, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+
 import { useTheme } from "../theme";
 import { ThemedText } from "./ThemedText";
 
@@ -25,8 +18,7 @@ type FullscreenComposerModalProps = {
 };
 
 export function FullscreenComposerModal(props: FullscreenComposerModalProps) {
-  const { visible, value, placeholder, isEditing, isSending, onChangeText, onClose, onSend } =
-    props;
+  const { visible, value, placeholder, isEditing, isSending, onChangeText, onClose, onSend } = props;
   const theme = useTheme();
   const spacing = theme.spacing;
   const insets = useSafeAreaInsets();
@@ -111,10 +103,7 @@ export function FullscreenComposerModal(props: FullscreenComposerModalProps) {
                 opacity: disabled ? 0.6 : 1,
               }}
             >
-              <ThemedText
-                weight="semibold"
-                style={{ color: disabled ? theme.colors.foregroundMuted : "#fff" }}
-              >
+              <ThemedText weight="semibold" style={{ color: disabled ? theme.colors.foregroundMuted : "#fff" }}>
                 {isSending ? "Sending…" : isEditing ? "Save" : "Send"}
               </ThemedText>
             </TouchableOpacity>
@@ -130,16 +119,11 @@ export function FullscreenComposerModal(props: FullscreenComposerModalProps) {
                 borderBottomColor: theme.colors.border,
               }}
             >
-              <ThemedText style={{ color: theme.colors.accent }}>
-                Editing existing message
-              </ThemedText>
+              <ThemedText style={{ color: theme.colors.accent }}>Editing existing message</ThemedText>
             </View>
           )}
 
-          <ScrollView
-            contentContainerStyle={{ flexGrow: 1, padding: spacing.lg }}
-            keyboardShouldPersistTaps="handled"
-          >
+          <ScrollView contentContainerStyle={{ flexGrow: 1, padding: spacing.lg }} keyboardShouldPersistTaps="handled">
             <View
               style={{
                 flex: 1,

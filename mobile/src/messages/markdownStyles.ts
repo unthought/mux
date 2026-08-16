@@ -1,5 +1,6 @@
 import { StyleSheet } from "react-native";
 import type { MarkdownProps } from "react-native-markdown-display";
+
 import type { Theme } from "../theme";
 import { assert } from "../utils/assert";
 

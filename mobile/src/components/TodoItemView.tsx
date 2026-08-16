@@ -1,7 +1,8 @@
 import type { JSX } from "react";
 import { Text, View } from "react-native";
-import { ThemedText } from "./ThemedText";
+
 import { useTheme } from "../theme";
+import { ThemedText } from "./ThemedText";
 
 export interface TodoItem {
   content: string;
@@ -20,10 +21,7 @@ interface StatusConfig {
   textColor: string;
 }
 
-function getStatusConfig(
-  status: TodoItem["status"],
-  colors: ReturnType<typeof useTheme>["colors"]
-): StatusConfig {
+function getStatusConfig(status: TodoItem["status"], colors: ReturnType<typeof useTheme>["colors"]): StatusConfig {
   switch (status) {
     case "completed":
       return {

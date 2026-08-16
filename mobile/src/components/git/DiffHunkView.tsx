@@ -1,6 +1,7 @@
 import type { JSX } from "react";
 import { memo } from "react";
 import { StyleSheet, Text, View, ScrollView } from "react-native";
+
 import { useTheme } from "../../theme";
 import type { DiffHunk } from "../../types/review";
 
@@ -60,10 +61,7 @@ export const DiffHunkView = memo<DiffHunkViewProps>(({ hunk, isRead = false, onP
     >
       {/* File path header */}
       <View style={[styles.header, { borderBottomColor: theme.colors.border }]}>
-        <Text
-          style={[styles.filePath, { color: theme.colors.foregroundPrimary }]}
-          numberOfLines={1}
-        >
+        <Text style={[styles.filePath, { color: theme.colors.foregroundPrimary }]} numberOfLines={1}>
           {hunk.filePath}
         </Text>
         {hunk.changeType && (
@@ -80,17 +78,13 @@ export const DiffHunkView = memo<DiffHunkViewProps>(({ hunk, isRead = false, onP
               },
             ]}
           >
-            <Text style={[styles.badgeText, { color: "#fff" }]}>
-              {hunk.changeType[0].toUpperCase()}
-            </Text>
+            <Text style={[styles.badgeText, { color: "#fff" }]}>{hunk.changeType[0].toUpperCase()}</Text>
           </View>
         )}
       </View>
 
       {/* Hunk range */}
-      <Text style={[styles.hunkRange, { color: theme.colors.foregroundTertiary }]}>
-        {hunk.header}
-      </Text>
+      <Text style={[styles.hunkRange, { color: theme.colors.foregroundTertiary }]}>{hunk.header}</Text>
 
       {/* Diff content with horizontal scroll */}
       <ScrollView horizontal style={styles.diffContainer} showsHorizontalScrollIndicator={true}>

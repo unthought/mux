@@ -1,6 +1,8 @@
 import { useMemo } from "react";
-import type { SlashSuggestion } from "@/browser/utils/slashCommands/types";
+
 import { getSlashCommandSuggestions } from "@/browser/utils/slashCommands/suggestions";
+import type { SlashSuggestion } from "@/browser/utils/slashCommands/types";
+
 import { filterSuggestionsForMobile, MOBILE_HIDDEN_COMMANDS } from "../utils/slashCommandHelpers";
 
 interface UseSlashCommandSuggestionsOptions {

@@ -34,9 +34,7 @@ function isDisplayedMessageEvent(event: WorkspaceChatEvent): event is DisplayedM
   return typeof sequence === "number" && Number.isFinite(sequence);
 }
 
-function isDeleteEvent(
-  event: WorkspaceChatEvent
-): event is { type: "delete"; historySequences: number[] } {
+function isDeleteEvent(event: WorkspaceChatEvent): event is { type: "delete"; historySequences: number[] } {
   return (
     typeof event === "object" &&
     event !== null &&
@@ -46,9 +44,7 @@ function isDeleteEvent(
   );
 }
 
-function hasHistoryIdentifier(
-  message: DisplayedMessage
-): message is DisplayedMessage & { historyId: string } {
+function hasHistoryIdentifier(message: DisplayedMessage): message is DisplayedMessage & { historyId: string } {
   return typeof (message as { historyId?: unknown }).historyId === "string";
 }
 function compareDisplayedMessages(a: DisplayedMessage, b: DisplayedMessage): number {
@@ -60,10 +56,7 @@ function compareDisplayedMessages(a: DisplayedMessage, b: DisplayedMessage): num
   return seqA - seqB;
 }
 
-export function applyChatEvent(
-  current: TimelineEntry[],
-  event: WorkspaceChatEvent
-): TimelineEntry[] {
+export function applyChatEvent(current: TimelineEntry[], event: WorkspaceChatEvent): TimelineEntry[] {
   if (isDeleteEvent(event)) {
     const sequences = new Set(event.historySequences);
     return current.filter((entry) => {
@@ -100,24 +93,18 @@ export function applyChatEvent(
     }
 
     // Check if message already exists (deduplicate)
-    const existingIndex = timeline.findIndex(
-      (item) => item.kind === "displayed" && item.message.id === event.id
-    );
+    const existingIndex = timeline.findIndex((item) => item.kind === "displayed" && item.message.id === event.id);
 
     if (existingIndex >= 0) {
       // Message already exists - check if it's an update
-      const existingMessage = (
-        timeline[existingIndex] as Extract<TimelineEntry, { kind: "displayed" }>
-      ).message;
+      const existingMessage = (timeline[existingIndex] as Extract<TimelineEntry, { kind: "displayed" }>).message;
 
       // Check if it's a streaming update (either still streaming or finishing a stream)
-      const wasStreaming =
-        "isStreaming" in existingMessage && (existingMessage as any).isStreaming === true;
+      const wasStreaming = "isStreaming" in existingMessage && (existingMessage as any).isStreaming === true;
       const isStreamingUpdate =
         existingMessage.historySequence === event.historySequence &&
         "isStreaming" in event &&
-        ((event as any).isStreaming === true ||
-          (wasStreaming && (event as any).isStreaming === false));
+        ((event as any).isStreaming === true || (wasStreaming && (event as any).isStreaming === false));
 
       // Check if it's a tool status change (executing → completed/failed)
       const isToolStatusChange =
@@ -126,8 +113,7 @@ export function applyChatEvent(
         existingMessage.historySequence === event.historySequence &&
         (existingMessage as any).status !== (event as any).status;
 
-      const isWorkspaceInitUpdate =
-        existingMessage.type === "workspace-init" && event.type === "workspace-init";
+      const isWorkspaceInitUpdate = existingMessage.type === "workspace-init" && event.type === "workspace-init";
 
       if (isStreamingUpdate || isToolStatusChange || isWorkspaceInitUpdate) {
         // Update in place
@@ -154,9 +140,7 @@ export function applyChatEvent(
     // Check if we need to sort (is new message out of order?)
     const lastDisplayed = [...timeline]
       .reverse()
-      .find(
-        (item): item is Extract<TimelineEntry, { kind: "displayed" }> => item.kind === "displayed"
-      );
+      .find((item): item is Extract<TimelineEntry, { kind: "displayed" }> => item.kind === "displayed");
 
     if (!lastDisplayed || compareDisplayedMessages(lastDisplayed.message, event) <= 0) {
       // New message is in order - just append (no sort needed)
@@ -164,18 +148,12 @@ export function applyChatEvent(
     }
 
     // Out of order - need to sort
-    const withoutExisting = timeline.filter(
-      (item) => item.kind !== "displayed" || item.message.id !== event.id
-    );
+    const withoutExisting = timeline.filter((item) => item.kind !== "displayed" || item.message.id !== event.id);
     const displayed = withoutExisting
-      .filter(
-        (item): item is Extract<TimelineEntry, { kind: "displayed" }> => item.kind === "displayed"
-      )
+      .filter((item): item is Extract<TimelineEntry, { kind: "displayed" }> => item.kind === "displayed")
       .concat(entry)
       .sort((left, right) => compareDisplayedMessages(left.message, right.message));
-    const raw = withoutExisting.filter(
-      (item): item is Extract<TimelineEntry, { kind: "raw" }> => item.kind === "raw"
-    );
+    const raw = withoutExisting.filter((item): item is Extract<TimelineEntry, { kind: "raw" }> => item.kind === "raw");
     return [...displayed, ...raw];
   }
 
@@ -183,8 +161,7 @@ export function applyChatEvent(
     typeof event === "object" &&
     event !== null &&
     "type" in event &&
-    ((event as { type: unknown }).type === "caught-up" ||
-      (event as { type: unknown }).type === "stream-start")
+    ((event as { type: unknown }).type === "caught-up" || (event as { type: unknown }).type === "stream-start")
   ) {
     return current;
   }

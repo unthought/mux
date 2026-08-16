@@ -1,7 +1,9 @@
 import { describe, expect, it } from "bun:test";
+
 import type { MuxMessage } from "@/common/types/message";
-import { createChatEventExpander } from "./normalizeChatEvent";
+
 import type { WorkspaceChatEvent } from "../types";
+import { createChatEventExpander } from "./normalizeChatEvent";
 
 describe("createChatEventExpander", () => {
   it("emits workspace init lifecycle updates", () => {

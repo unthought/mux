@@ -1,10 +1,11 @@
+import { Ionicons } from "@expo/vector-icons";
 import type { JSX } from "react";
 import { useState } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
+
+import { useTheme } from "../theme";
 import { ThemedText } from "./ThemedText";
 import { TodoItemView, type TodoItem } from "./TodoItemView";
-import { useTheme } from "../theme";
 
 interface FloatingTodoCardProps {
   todos: TodoItem[];

@@ -1,7 +1,8 @@
 import { Modal, View, Pressable, ActivityIndicator } from "react-native";
+
+import { useTheme } from "../theme";
 import { Surface } from "./Surface";
 import { ThemedText } from "./ThemedText";
-import { useTheme } from "../theme";
 
 interface StartHereModalProps {
   visible: boolean;

@@ -1,7 +1,8 @@
 import type { JSX } from "react";
+import { useMemo } from "react";
 import type { ViewProps, ViewStyle } from "react-native";
 import { View } from "react-native";
-import { useMemo } from "react";
+
 import { useTheme } from "../theme";
 import { assert } from "../utils/assert";
 
@@ -12,13 +13,7 @@ export interface SurfaceProps extends ViewProps {
   padding?: number;
 }
 
-export function Surface({
-  variant = "plain",
-  style,
-  padding,
-  children,
-  ...rest
-}: SurfaceProps): JSX.Element {
+export function Surface({ variant = "plain", style, padding, children, ...rest }: SurfaceProps): JSX.Element {
   const theme = useTheme();
 
   const variantStyle = useMemo(() => {

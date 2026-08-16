@@ -1,11 +1,12 @@
+import { Ionicons } from "@expo/vector-icons";
 import type { JSX } from "react";
 import { useState } from "react";
 import { Pressable, Text, View } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
+
+import { useTheme } from "../theme";
 import { Surface } from "./Surface";
 import { ThemedText } from "./ThemedText";
 import { TodoItemView, type TodoItem } from "./TodoItemView";
-import { useTheme } from "../theme";
 
 interface TodoToolCardProps {
   todos: TodoItem[];
@@ -39,11 +40,7 @@ export function TodoToolCard({ todos, status }: TodoToolCardProps): JSX.Element 
   const completedCount = todos.filter((t) => t.status === "completed").length;
 
   return (
-    <Surface
-      variant="plain"
-      style={{ padding: spacing.md, marginBottom: spacing.md }}
-      accessibilityRole="summary"
-    >
+    <Surface variant="plain" style={{ padding: spacing.md, marginBottom: spacing.md }} accessibilityRole="summary">
       <Pressable
         onPress={() => setIsExpanded(!isExpanded)}
         style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}

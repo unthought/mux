@@ -1,14 +1,9 @@
+import { parsePatch } from "diff";
+import { Link } from "expo-router";
 import type { ReactNode } from "react";
 import React from "react";
 import { View, Text, ScrollView, StyleSheet, Pressable } from "react-native";
-import { Link } from "expo-router";
-import { parsePatch } from "diff";
-import {
-  coerceBashToolResult,
-  convertTaskBashResult,
-} from "@/common/utils/tools/taskResultConverters";
-import { isTaskBashArgs, isTaskBashArgsFromUnknown } from "@/common/utils/tools/taskToolTypeGuards";
-import { resolveBashDisplayName } from "@/common/utils/tools/bashDisplayName";
+
 import type { DisplayedMessage } from "@/common/types/message";
 import {
   FILE_EDIT_TOOL_NAMES,
@@ -42,10 +37,14 @@ import {
   type AgentReportToolArgs,
   type AgentReportToolResult,
 } from "@/common/types/tools";
-import { useTheme } from "../../theme";
+import { resolveBashDisplayName } from "@/common/utils/tools/bashDisplayName";
+import { coerceBashToolResult, convertTaskBashResult } from "@/common/utils/tools/taskResultConverters";
+import { isTaskBashArgs, isTaskBashArgsFromUnknown } from "@/common/utils/tools/taskToolTypeGuards";
+
 import { MarkdownMessageBody } from "../../components/MarkdownMessageBody";
-import { useLiveBashOutputView } from "../../contexts/LiveBashOutputContext";
 import { ThemedText } from "../../components/ThemedText";
+import { useLiveBashOutputView } from "../../contexts/LiveBashOutputContext";
+import { useTheme } from "../../theme";
 
 export type ToolDisplayedMessage = DisplayedMessage & { type: "tool" };
 
@@ -80,16 +79,12 @@ export function renderSpecializedToolCard(message: ToolDisplayedMessage): ToolCa
       if (!isBashOutputToolArgs(message.args)) {
         return null;
       }
-      return buildBashOutputViewModel(
-        message as ToolDisplayedMessage & { args: BashOutputToolArgs }
-      );
+      return buildBashOutputViewModel(message as ToolDisplayedMessage & { args: BashOutputToolArgs });
     case "bash_background_list":
       if (!isBashBackgroundListArgs(message.args)) {
         return null;
       }
-      return buildBashBackgroundListViewModel(
-        message as ToolDisplayedMessage & { args: BashBackgroundListArgs }
-      );
+      return buildBashBackgroundListViewModel(message as ToolDisplayedMessage & { args: BashBackgroundListArgs });
     case "task":
       if (!isTaskToolArgs(message.args)) {
         return null;
@@ -112,16 +107,12 @@ export function renderSpecializedToolCard(message: ToolDisplayedMessage): ToolCa
       if (!isTaskTerminateToolArgs(message.args)) {
         return null;
       }
-      return buildTaskTerminateViewModel(
-        message as ToolDisplayedMessage & { args: TaskTerminateToolArgs }
-      );
+      return buildTaskTerminateViewModel(message as ToolDisplayedMessage & { args: TaskTerminateToolArgs });
     case "agent_report":
       if (!isAgentReportToolArgs(message.args)) {
         return null;
       }
-      return buildAgentReportViewModel(
-        message as ToolDisplayedMessage & { args: AgentReportToolArgs }
-      );
+      return buildAgentReportViewModel(message as ToolDisplayedMessage & { args: AgentReportToolArgs });
     case "bash_background_terminate":
       if (!isBashBackgroundTerminateArgs(message.args)) {
         return null;
@@ -146,9 +137,7 @@ interface MetadataItem {
   tone?: "default" | "warning" | "danger";
 }
 
-function buildBashViewModel(
-  message: ToolDisplayedMessage & { args: BashToolArgs }
-): ToolCardViewModel {
+function buildBashViewModel(message: ToolDisplayedMessage & { args: BashToolArgs }): ToolCardViewModel {
   const args = message.args;
   const result = coerceBashToolResult(message.result);
   const preview = truncate(args.script.trim().split("\n")[0], 80) || "bash";
@@ -173,21 +162,12 @@ function buildBashViewModel(
     caption: "bash",
     title: preview,
     summary: metadata.length > 0 ? <MetadataList items={metadata} /> : undefined,
-    content: (
-      <BashToolContent
-        args={args}
-        result={result}
-        status={message.status}
-        toolCallId={message.toolCallId}
-      />
-    ),
+    content: <BashToolContent args={args} result={result} status={message.status} toolCallId={message.toolCallId} />,
     defaultExpanded: message.status !== "completed" || Boolean(result && result.success === false),
   };
 }
 
-function buildFileReadViewModel(
-  message: ToolDisplayedMessage & { args: FileReadToolArgs }
-): ToolCardViewModel {
+function buildFileReadViewModel(message: ToolDisplayedMessage & { args: FileReadToolArgs }): ToolCardViewModel {
   const args = message.args;
   const result = coerceFileReadToolResult(message.result);
 
@@ -220,9 +200,7 @@ function buildFileReadViewModel(
   };
 }
 
-function buildWebFetchViewModel(
-  message: ToolDisplayedMessage & { args: WebFetchToolArgs }
-): ToolCardViewModel {
+function buildWebFetchViewModel(message: ToolDisplayedMessage & { args: WebFetchToolArgs }): ToolCardViewModel {
   const args = message.args;
   const result = coerceWebFetchToolResult(message.result);
 
@@ -275,9 +253,7 @@ function WebFetchContent({
   );
 }
 
-function buildBashOutputViewModel(
-  message: ToolDisplayedMessage & { args: BashOutputToolArgs }
-): ToolCardViewModel {
+function buildBashOutputViewModel(message: ToolDisplayedMessage & { args: BashOutputToolArgs }): ToolCardViewModel {
   const args = message.args;
   const result = coerceBashOutputToolResult(message.result);
 
@@ -338,11 +314,7 @@ function buildBashBackgroundListViewModel(
   };
 }
 
-function BashBackgroundListContent({
-  result,
-}: {
-  result: BashBackgroundListResult | null;
-}): JSX.Element {
+function BashBackgroundListContent({ result }: { result: BashBackgroundListResult | null }): JSX.Element {
   if (!result) {
     return <ThemedText variant="muted">Listing processes…</ThemedText>;
   }
@@ -367,9 +339,7 @@ function BashBackgroundListContent({
                 { label: "id", value: truncate(proc.process_id, 16) },
                 { label: "status", value: proc.status },
                 { label: "uptime", value: `${Math.round(proc.uptime_ms / 1000)}s` },
-                ...(typeof proc.exitCode === "number"
-                  ? [{ label: "exit", value: String(proc.exitCode) }]
-                  : []),
+                ...(typeof proc.exitCode === "number" ? [{ label: "exit", value: String(proc.exitCode) }] : []),
               ]}
             />
           </View>
@@ -394,11 +364,7 @@ function buildBashBackgroundTerminateViewModel(
   };
 }
 
-function BashBackgroundTerminateContent({
-  result,
-}: {
-  result: BashBackgroundTerminateResult | null;
-}): JSX.Element {
+function BashBackgroundTerminateContent({ result }: { result: BashBackgroundTerminateResult | null }): JSX.Element {
   if (!result) {
     return <ThemedText variant="muted">Terminating…</ThemedText>;
   }
@@ -410,9 +376,7 @@ function BashBackgroundTerminateContent({
   return <ThemedText>{result.message}</ThemedText>;
 }
 
-function buildTaskBashViewModel(
-  message: ToolDisplayedMessage & { args: TaskToolArgs }
-): ToolCardViewModel {
+function buildTaskBashViewModel(message: ToolDisplayedMessage & { args: TaskToolArgs }): ToolCardViewModel {
   const args = message.args;
   if (!isTaskBashArgs(args)) {
     return {
@@ -461,21 +425,13 @@ function buildTaskBashViewModel(
     title: preview,
     summary: metadata.length > 0 ? <MetadataList items={metadata} /> : undefined,
     content: (
-      <BashToolContent
-        args={bashArgs}
-        result={bashResult}
-        status={message.status}
-        toolCallId={message.toolCallId}
-      />
+      <BashToolContent args={bashArgs} result={bashResult} status={message.status} toolCallId={message.toolCallId} />
     ),
-    defaultExpanded:
-      message.status !== "completed" || Boolean(bashResult && bashResult.success === false),
+    defaultExpanded: message.status !== "completed" || Boolean(bashResult && bashResult.success === false),
   };
 }
 
-function buildTaskViewModel(
-  message: ToolDisplayedMessage & { args: TaskToolArgs }
-): ToolCardViewModel {
+function buildTaskViewModel(message: ToolDisplayedMessage & { args: TaskToolArgs }): ToolCardViewModel {
   const args = message.args;
   const result = coerceTaskToolResult(message.result);
 
@@ -527,9 +483,7 @@ function TaskToolContent({
       : null;
 
   const reportMarkdown =
-    result && !("success" in result) && result.status === "completed"
-      ? result.reportMarkdown
-      : null;
+    result && !("success" in result) && result.status === "completed" ? result.reportMarkdown : null;
 
   return (
     <View style={{ gap: theme.spacing.sm }}>
@@ -559,9 +513,7 @@ function TaskToolContent({
   );
 }
 
-function buildTaskAwaitViewModel(
-  message: ToolDisplayedMessage & { args: TaskAwaitToolArgs }
-): ToolCardViewModel {
+function buildTaskAwaitViewModel(message: ToolDisplayedMessage & { args: TaskAwaitToolArgs }): ToolCardViewModel {
   const args = message.args;
   const result = coerceTaskAwaitToolResult(message.result);
 
@@ -628,9 +580,7 @@ function TaskAwaitContent({
   );
 }
 
-function buildTaskListViewModel(
-  message: ToolDisplayedMessage & { args: TaskListToolArgs }
-): ToolCardViewModel {
+function buildTaskListViewModel(message: ToolDisplayedMessage & { args: TaskListToolArgs }): ToolCardViewModel {
   const args = message.args;
   const result = coerceTaskListToolResult(message.result);
 
@@ -743,9 +693,7 @@ function TaskTerminateContent({
   );
 }
 
-function buildAgentReportViewModel(
-  message: ToolDisplayedMessage & { args: AgentReportToolArgs }
-): ToolCardViewModel {
+function buildAgentReportViewModel(message: ToolDisplayedMessage & { args: AgentReportToolArgs }): ToolCardViewModel {
   const args = message.args;
   const result = coerceAgentReportToolResult(message.result);
 
@@ -828,13 +776,7 @@ function TaskResultRow({
   );
 }
 
-function WorkspaceLinkButton({
-  workspaceId,
-  label,
-}: {
-  workspaceId: string;
-  label?: string;
-}): JSX.Element {
+function WorkspaceLinkButton({ workspaceId, label }: { workspaceId: string; label?: string }): JSX.Element {
   const theme = useTheme();
 
   return (
@@ -902,9 +844,7 @@ function ScrollableCodeBlock({
   );
 }
 
-function buildFileEditViewModel(
-  message: ToolDisplayedMessage & { args: FileEditArgsUnion }
-): ToolCardViewModel {
+function buildFileEditViewModel(message: ToolDisplayedMessage & { args: FileEditArgsUnion }): ToolCardViewModel {
   const toolName = message.toolName as FileEditToolName;
   const args = message.args;
   const result = coerceFileEditResultUnion(message.result);
@@ -972,10 +912,7 @@ function MetadataPill({ item }: { item: MetadataItem }): JSX.Element {
   );
 }
 
-function getMetadataPalette(
-  theme: ReturnType<typeof useTheme>,
-  tone: "default" | "warning" | "danger"
-) {
+function getMetadataPalette(theme: ReturnType<typeof useTheme>, tone: "default" | "warning" | "danger") {
   switch (tone) {
     case "warning":
       return {
@@ -1064,9 +1001,7 @@ function BashToolContent({
     <View style={{ gap: 12 }}>
       {stdout.length > 0 ? <CodeBlock label="stdout" text={stdout} /> : null}
       {stderr.length > 0 ? <CodeBlock label="stderr" text={stderr} tone="danger" /> : null}
-      {stdout.length === 0 && stderr.length === 0 ? (
-        <CodeBlock label="stdout" text="(no output)" />
-      ) : null}
+      {stdout.length === 0 && stderr.length === 0 ? <CodeBlock label="stdout" text="(no output)" /> : null}
       <MetadataList
         items={[
           {
@@ -1128,13 +1063,7 @@ function parseFileReadContent(content: string): {
   return { lineNumbers, lines };
 }
 
-function FileReadLines({
-  lineNumbers,
-  lines,
-}: {
-  lineNumbers: string[];
-  lines: string[];
-}): JSX.Element {
+function FileReadLines({ lineNumbers, lines }: { lineNumbers: string[]; lines: string[] }): JSX.Element {
   const theme = useTheme();
   return (
     <ScrollView
@@ -1204,24 +1133,14 @@ function FileEditContent({
   return (
     <View style={{ gap: 12 }}>
       {result.warning ? <CodeBlock label="warning" text={result.warning} tone="warning" /> : null}
-      {result.diff ? (
-        <DiffPreview diff={result.diff} />
-      ) : (
-        <ThemedText variant="muted">No diff available.</ThemedText>
-      )}
+      {result.diff ? <DiffPreview diff={result.diff} /> : <ThemedText variant="muted">No diff available.</ThemedText>}
     </View>
   );
 }
 
-type FileEditResultUnion =
-  | FileEditInsertToolResult
-  | FileEditReplaceStringToolResult
-  | FileEditReplaceLinesToolResult;
+type FileEditResultUnion = FileEditInsertToolResult | FileEditReplaceStringToolResult | FileEditReplaceLinesToolResult;
 
-type FileEditArgsUnion =
-  | FileEditInsertToolArgs
-  | FileEditReplaceStringToolArgs
-  | FileEditReplaceLinesToolArgs;
+type FileEditArgsUnion = FileEditInsertToolArgs | FileEditReplaceStringToolArgs | FileEditReplaceLinesToolArgs;
 
 function buildFileEditMetadata(
   toolName: FileEditToolName,
@@ -1293,9 +1212,7 @@ function DiffPreview({ diff }: { diff?: string | null }): JSX.Element {
   try {
     rows = buildDiffRows(diff);
   } catch (error) {
-    return (
-      <CodeBlock label="error" text={`Failed to parse diff: ${String(error)}`} tone="danger" />
-    );
+    return <CodeBlock label="error" text={`Failed to parse diff: ${String(error)}`} tone="danger" />;
   }
 
   if (rows.length === 0) {
@@ -1313,13 +1230,8 @@ function DiffPreview({ diff }: { diff?: string | null }): JSX.Element {
       }}
     >
       {rows.map((row) => (
-        <View
-          key={row.key}
-          style={[diffStyles.row, { backgroundColor: getDiffBackground(theme, row.type) }]}
-        >
-          <Text style={[diffStyles.indicator, { color: getDiffIndicatorColor(theme, row.type) }]}>
-            {row.indicator}
-          </Text>
+        <View key={row.key} style={[diffStyles.row, { backgroundColor: getDiffBackground(theme, row.type) }]}>
+          <Text style={[diffStyles.indicator, { color: getDiffIndicatorColor(theme, row.type) }]}>{row.indicator}</Text>
           <Text style={[diffStyles.lineNumber, { color: getDiffLineNumberColor(theme, row.type) }]}>
             {row.oldLine ?? ""}
           </Text>
@@ -1504,10 +1416,7 @@ function CodeBlock({
   );
 }
 
-function getCodeBlockPalette(
-  theme: ReturnType<typeof useTheme>,
-  tone: "default" | "warning" | "danger"
-) {
+function getCodeBlockPalette(theme: ReturnType<typeof useTheme>, tone: "default" | "warning" | "danger") {
   switch (tone) {
     case "warning":
       return {

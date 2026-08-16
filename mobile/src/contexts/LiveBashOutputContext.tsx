@@ -1,12 +1,14 @@
 import type { JSX, ReactNode } from "react";
 import { createContext, useContext, useEffect, useRef, useState } from "react";
-import { BASH_TRUNCATE_MAX_TOTAL_BYTES } from "@/common/constants/toolLimits";
+
 import {
   appendLiveBashOutputChunk,
   toLiveBashOutputView,
   type LiveBashOutputInternal,
   type LiveBashOutputView,
 } from "@/browser/utils/messages/liveBashOutputBuffer";
+import { BASH_TRUNCATE_MAX_TOTAL_BYTES } from "@/common/constants/toolLimits";
+
 import { assert } from "../utils/assert";
 
 type Listener = () => void;
@@ -77,11 +79,7 @@ export function LiveBashOutputProvider({ children }: { children: ReactNode }): J
     storeRef.current = new LiveBashOutputStore();
   }
 
-  return (
-    <LiveBashOutputContext.Provider value={storeRef.current}>
-      {children}
-    </LiveBashOutputContext.Provider>
-  );
+  return <LiveBashOutputContext.Provider value={storeRef.current}>{children}</LiveBashOutputContext.Provider>;
 }
 
 export function useLiveBashOutputStore(): LiveBashOutputStore {

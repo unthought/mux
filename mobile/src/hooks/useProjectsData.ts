@@ -1,5 +1,6 @@
-import { useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEffect } from "react";
+
 import { useORPC } from "../orpc/react";
 import type { FrontendWorkspaceMetadata, WorkspaceActivitySnapshot } from "../types";
 
@@ -42,27 +43,24 @@ export function useProjectsData() {
           if (controller.signal.aborted) break;
 
           const { workspaceId, metadata } = event;
-          queryClient.setQueryData<FrontendWorkspaceMetadata[] | undefined>(
-            WORKSPACES_QUERY_KEY,
-            (existing) => {
-              if (!existing || existing.length === 0) {
-                return existing;
-              }
-
-              if (metadata === null) {
-                return existing.filter((w) => w.id !== workspaceId);
-              }
-
-              const index = existing.findIndex((workspace) => workspace.id === workspaceId);
-              if (index === -1) {
-                return [...existing, metadata as FrontendWorkspaceMetadata];
-              }
-
-              const next = existing.slice();
-              next[index] = { ...next[index], ...metadata };
-              return next;
+          queryClient.setQueryData<FrontendWorkspaceMetadata[] | undefined>(WORKSPACES_QUERY_KEY, (existing) => {
+            if (!existing || existing.length === 0) {
+              return existing;
             }
-          );
+
+            if (metadata === null) {
+              return existing.filter((w) => w.id !== workspaceId);
+            }
+
+            const index = existing.findIndex((workspace) => workspace.id === workspaceId);
+            if (index === -1) {
+              return [...existing, metadata as FrontendWorkspaceMetadata];
+            }
+
+            const next = existing.slice();
+            next[index] = { ...next[index], ...metadata };
+            return next;
+          });
         }
       } catch (error) {
         // Stream ended or aborted - this is expected on cleanup

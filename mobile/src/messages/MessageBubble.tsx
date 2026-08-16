@@ -1,8 +1,10 @@
 import type { JSX, ReactNode } from "react";
 import React, { useMemo, useState } from "react";
 import { View, Text, TouchableOpacity, StyleSheet, ScrollView } from "react-native";
-import type { DisplayedMessage } from "@/common/types/message";
+
 import { formatTimestamp } from "@/browser/utils/ui/dateTime";
+import type { DisplayedMessage } from "@/common/types/message";
+
 import { Surface } from "../components/Surface";
 import { ThemedText } from "../components/ThemedText";
 import { useTheme } from "../theme";
@@ -82,12 +84,7 @@ export function MessageBubble(props: MessageBubbleProps): JSX.Element {
       </Surface>
 
       {showMetaRow && (
-        <View
-          style={[
-            styles.metaRow,
-            variant === "user" ? styles.metaRowUser : styles.metaRowAssistant,
-          ]}
-        >
+        <View style={[styles.metaRow, variant === "user" ? styles.metaRowUser : styles.metaRowAssistant]}>
           <View style={styles.buttonsRow}>
             {metaButtons.map((button, index) => (
               <IconActionButton key={`${button.label}-${index}`} button={button} />

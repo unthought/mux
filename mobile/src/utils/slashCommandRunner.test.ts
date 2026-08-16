@@ -31,9 +31,7 @@ function createMockClient(): SlashCommandRunnerContext["client"] {
   return client;
 }
 
-function createContext(
-  overrides: Partial<SlashCommandRunnerContext> = {}
-): SlashCommandRunnerContext {
+function createContext(overrides: Partial<SlashCommandRunnerContext> = {}): SlashCommandRunnerContext {
   const client = createMockClient();
   return {
     client,
@@ -86,9 +84,6 @@ describe("executeSlashCommand", () => {
     const ctx = createContext();
     const handled = await executeSlashCommand({ type: "vim-toggle" }, ctx);
     expect(handled).toBe(true);
-    expect(ctx.showInfo).toHaveBeenCalledWith(
-      "Not supported",
-      "This command is only available on the desktop app."
-    );
+    expect(ctx.showInfo).toHaveBeenCalledWith("Not supported", "This command is only available on the desktop app.");
   });
 });

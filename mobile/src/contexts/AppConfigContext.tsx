@@ -1,9 +1,11 @@
+import Constants from "expo-constants";
 import type { JSX, ReactNode } from "react";
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { Platform } from "react-native";
-import * as Storage from "../lib/storage";
-import Constants from "expo-constants";
+
 import { assert } from "@/common/utils/assert";
+
+import * as Storage from "../lib/storage";
 
 const STORAGE_KEY_BASE_URL = "com.coder.mux.app-settings.baseUrl";
 const STORAGE_KEY_AUTH_TOKEN = "com.coder.mux.app-settings.authToken";
@@ -171,15 +173,7 @@ export function AppConfigProvider({ children }: { children: ReactNode }): JSX.El
       setBaseUrl: persistBaseUrl,
       setAuthToken: persistAuthToken,
     }),
-    [
-      authTokenInput,
-      baseUrlInput,
-      loading,
-      persistAuthToken,
-      persistBaseUrl,
-      resolvedAuthToken,
-      resolvedBaseUrl,
-    ]
+    [authTokenInput, baseUrlInput, loading, persistAuthToken, persistBaseUrl, resolvedAuthToken, resolvedBaseUrl]
   );
 
   return <AppConfigContext.Provider value={value}>{children}</AppConfigContext.Provider>;

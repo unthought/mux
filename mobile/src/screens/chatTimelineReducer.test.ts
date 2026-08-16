@@ -1,6 +1,6 @@
-import { applyChatEvent, TimelineEntry } from "./chatTimelineReducer";
 import type { WorkspaceChatEvent } from "../types";
 import type { DisplayedMessage } from "../types";
+import { applyChatEvent, TimelineEntry } from "./chatTimelineReducer";
 
 describe("chatTimelineReducer", () => {
   const createUserMessage = (sequence: number, id?: string): DisplayedMessage => ({
@@ -29,11 +29,7 @@ describe("chatTimelineReducer", () => {
     timestamp: 1,
     ...overrides,
   });
-  const createAssistantChunk = (
-    sequence: number,
-    streamSequence: number,
-    id: string
-  ): DisplayedMessage => ({
+  const createAssistantChunk = (sequence: number, streamSequence: number, id: string): DisplayedMessage => ({
     type: "assistant",
     id,
     historyId: "assistant-message",
@@ -70,29 +66,18 @@ describe("chatTimelineReducer", () => {
 
     const result = applyChatEvent(timeline, createUserMessage(2, "b"));
 
-    const displayedIds = result
-      .filter((entry) => entry.kind === "displayed")
-      .map((entry) => entry.message.id);
+    const displayedIds = result.filter((entry) => entry.kind === "displayed").map((entry) => entry.message.id);
 
     expect(displayedIds).toEqual(["a", "b"]);
   });
 
   it("does not drop existing history when workspace-init updates", () => {
-    const timeline: TimelineEntry[] = [
-      asEntry(createUserMessage(1, "user-1")),
-      asEntry(createWorkspaceInitMessage()),
-    ];
+    const timeline: TimelineEntry[] = [asEntry(createUserMessage(1, "user-1")), asEntry(createWorkspaceInitMessage())];
 
-    const result = applyChatEvent(
-      timeline,
-      createWorkspaceInitMessage({ status: "success", timestamp: 5 })
-    );
+    const result = applyChatEvent(timeline, createWorkspaceInitMessage({ status: "success", timestamp: 5 }));
 
     const displayedIds = result
-      .filter(
-        (entry): entry is Extract<TimelineEntry, { kind: "displayed" }> =>
-          entry.kind === "displayed"
-      )
+      .filter((entry): entry is Extract<TimelineEntry, { kind: "displayed" }> => entry.kind === "displayed")
       .map((entry) => entry.message.id);
 
     expect(displayedIds).toContain("user-1");
@@ -136,12 +121,8 @@ describe("chatTimelineReducer", () => {
     )?.message;
 
     expect(completedMessage?.type).toBe("workspace-init");
-    expect(
-      completedMessage && "status" in completedMessage ? completedMessage.status : undefined
-    ).toBe("success");
-    expect(
-      completedMessage && "exitCode" in completedMessage ? completedMessage.exitCode : null
-    ).toBe(0);
+    expect(completedMessage && "status" in completedMessage ? completedMessage.status : undefined).toBe("success");
+    expect(completedMessage && "exitCode" in completedMessage ? completedMessage.exitCode : null).toBe(0);
     expect(completedMessage && "lines" in completedMessage ? completedMessage.lines : []).toEqual([
       { line: "Starting services", isError: false },
       { line: "Done", isError: false },
@@ -155,9 +136,7 @@ describe("chatTimelineReducer", () => {
 
     const result = applyChatEvent(timeline, createAssistantChunk(5, 2, "chunk-2"));
 
-    const ids = result
-      .filter((entry) => entry.kind === "displayed")
-      .map((entry) => entry.message.id);
+    const ids = result.filter((entry) => entry.kind === "displayed").map((entry) => entry.message.id);
 
     expect(ids).toEqual(["chunk-0", "chunk-1", "chunk-2"]);
   });

@@ -1,16 +1,12 @@
-import { buildContinueMessage, type MuxMessageMetadata } from "@/common/types/message";
-import type { ParsedCommand, SlashSuggestion } from "@/browser/utils/slashCommands/types";
 import type { InferClientInputs } from "@orpc/client";
-import type { ORPCClient } from "../orpc/client";
-import {
-  DEFAULT_COMPACTION_WORD_TARGET,
-  WORDS_TO_TOKENS_RATIO,
-  buildCompactionPrompt,
-} from "@/common/constants/ui";
 
-type SendMessageOptions = NonNullable<
-  InferClientInputs<ORPCClient>["workspace"]["sendMessage"]["options"]
->;
+import type { ParsedCommand, SlashSuggestion } from "@/browser/utils/slashCommands/types";
+import { DEFAULT_COMPACTION_WORD_TARGET, WORDS_TO_TOKENS_RATIO, buildCompactionPrompt } from "@/common/constants/ui";
+import { buildContinueMessage, type MuxMessageMetadata } from "@/common/types/message";
+
+import type { ORPCClient } from "../orpc/client";
+
+type SendMessageOptions = NonNullable<InferClientInputs<ORPCClient>["workspace"]["sendMessage"]["options"]>;
 
 export const MOBILE_HIDDEN_COMMANDS = new Set(["telemetry", "vim"]);
 

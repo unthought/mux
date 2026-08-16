@@ -1,15 +1,17 @@
-import type { JSX } from "react";
-import { Pressable, ScrollView, View } from "react-native";
-import { Stack } from "expo-router";
 import Slider from "@react-native-community/slider";
 import { Picker } from "@react-native-picker/picker";
-import { useTheme } from "../src/theme";
+import { Stack } from "expo-router";
+import type { JSX } from "react";
+import { Pressable, ScrollView, View } from "react-native";
+
+import { KNOWN_MODEL_OPTIONS } from "@/common/constants/knownModels";
+import { supports1MContext } from "@/common/utils/ai/models";
+
 import { Surface } from "../src/components/Surface";
 import { ThemedText } from "../src/components/ThemedText";
 import { useWorkspaceDefaults } from "../src/hooks/useWorkspaceDefaults";
+import { useTheme } from "../src/theme";
 import type { ThinkingLevel, WorkspaceMode } from "../src/types/settings";
-import { supports1MContext } from "@/common/utils/ai/models";
-import { KNOWN_MODEL_OPTIONS } from "@/common/constants/knownModels";
 
 const MODE_TABS: WorkspaceMode[] = ["plan", "exec"];
 const THINKING_LEVELS: ThinkingLevel[] = ["off", "low", "medium", "high"];
@@ -54,8 +56,7 @@ export default function WorkspaceSettings(): JSX.Element {
             Default Settings
           </ThemedText>
           <ThemedText variant="caption" style={{ marginTop: spacing.xs }}>
-            Set default preferences for new workspaces. Change settings per workspace via the ⋯
-            menu.
+            Set default preferences for new workspaces. Change settings per workspace via the ⋯ menu.
           </ThemedText>
 
           {/* Model Selection */}
@@ -119,10 +120,7 @@ export default function WorkspaceSettings(): JSX.Element {
               >
                 <View style={{ flex: 1 }}>
                   <ThemedText variant="label">Use 1M Context (Beta)</ThemedText>
-                  <ThemedText
-                    variant="caption"
-                    style={{ marginTop: spacing.xs, color: theme.colors.foregroundMuted }}
-                  >
+                  <ThemedText variant="caption" style={{ marginTop: spacing.xs, color: theme.colors.foregroundMuted }}>
                     Enable Anthropic's beta 1M context window for supported Sonnet 4 / 4.5 models.
                   </ThemedText>
                 </View>
@@ -199,9 +197,7 @@ export default function WorkspaceSettings(): JSX.Element {
                       align="center"
                       weight={selected ? "semibold" : "regular"}
                       style={{
-                        color: selected
-                          ? theme.colors.foregroundInverted
-                          : theme.colors.foregroundSecondary,
+                        color: selected ? theme.colors.foregroundInverted : theme.colors.foregroundSecondary,
                       }}
                     >
                       {tab.toUpperCase()}
@@ -210,10 +206,7 @@ export default function WorkspaceSettings(): JSX.Element {
                 );
               })}
             </View>
-            <ThemedText
-              variant="caption"
-              style={{ marginTop: spacing.xs, color: theme.colors.foregroundMuted }}
-            >
+            <ThemedText variant="caption" style={{ marginTop: spacing.xs, color: theme.colors.foregroundMuted }}>
               Plan mode: AI proposes changes. Exec mode: AI makes changes directly.
             </ThemedText>
           </View>
@@ -275,20 +268,13 @@ export default function WorkspaceSettings(): JSX.Element {
                 }}
               >
                 {THINKING_LEVELS.map((level) => (
-                  <ThemedText
-                    key={level}
-                    variant="caption"
-                    style={{ textTransform: "uppercase", fontSize: 9 }}
-                  >
+                  <ThemedText key={level} variant="caption" style={{ textTransform: "uppercase", fontSize: 9 }}>
                     {level}
                   </ThemedText>
                 ))}
               </View>
             </View>
-            <ThemedText
-              variant="caption"
-              style={{ marginTop: spacing.xs, color: theme.colors.foregroundMuted }}
-            >
+            <ThemedText variant="caption" style={{ marginTop: spacing.xs, color: theme.colors.foregroundMuted }}>
               Higher reasoning levels use extended thinking for complex tasks.
             </ThemedText>
           </View>

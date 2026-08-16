@@ -1,18 +1,11 @@
+import { Ionicons } from "@expo/vector-icons";
 import type { JSX } from "react";
 import { useState, useEffect } from "react";
-import {
-  Modal,
-  View,
-  TextInput,
-  ScrollView,
-  TouchableOpacity,
-  KeyboardAvoidingView,
-  Platform,
-} from "react-native";
-import { Ionicons } from "@expo/vector-icons";
+import { Modal, View, TextInput, ScrollView, TouchableOpacity, KeyboardAvoidingView, Platform } from "react-native";
+
 import { useTheme } from "../theme";
-import { ThemedText } from "./ThemedText";
 import type { Secret } from "../types";
+import { ThemedText } from "./ThemedText";
 
 interface SecretsModalProps {
   visible: boolean;
@@ -97,16 +90,8 @@ export function SecretsModal({
   };
 
   return (
-    <Modal
-      visible={visible}
-      animationType="slide"
-      onRequestClose={handleCancel}
-      presentationStyle="pageSheet"
-    >
-      <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
-        style={{ flex: 1 }}
-      >
+    <Modal visible={visible} animationType="slide" onRequestClose={handleCancel} presentationStyle="pageSheet">
+      <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1 }}>
         <View
           style={{
             flex: 1,
@@ -131,11 +116,7 @@ export function SecretsModal({
                 borderBottomColor: theme.colors.borderSubtle,
               }}
             >
-              <TouchableOpacity
-                onPress={handleCancel}
-                disabled={isLoading}
-                style={{ paddingHorizontal: spacing.sm }}
-              >
+              <TouchableOpacity onPress={handleCancel} disabled={isLoading} style={{ paddingHorizontal: spacing.sm }}>
                 <ThemedText style={{ fontSize: 17, color: theme.colors.accent }}>Cancel</ThemedText>
               </TouchableOpacity>
               <ThemedText style={{ fontSize: 17, fontWeight: "600" }}>Secrets</ThemedText>
@@ -164,9 +145,7 @@ export function SecretsModal({
                 backgroundColor: theme.colors.surfaceSunken,
               }}
             >
-              <ThemedText style={{ fontSize: 13, opacity: 0.7, marginBottom: 2 }}>
-                PROJECT
-              </ThemedText>
+              <ThemedText style={{ fontSize: 13, opacity: 0.7, marginBottom: 2 }}>PROJECT</ThemedText>
               <ThemedText style={{ fontSize: 15 }}>{projectName}</ThemedText>
             </View>
 

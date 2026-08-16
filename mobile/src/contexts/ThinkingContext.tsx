@@ -1,8 +1,10 @@
+import * as SecureStore from "expo-secure-store";
 import type { JSX } from "react";
 import type { PropsWithChildren } from "react";
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
-import * as SecureStore from "expo-secure-store";
+
 import type { ThinkingLevel } from "@/common/types/thinking";
+
 import { assert } from "../utils/assert";
 
 export type { ThinkingLevel } from "@/common/types/thinking";
@@ -28,13 +30,7 @@ function sanitizeWorkspaceId(workspaceId: string): string {
 async function readThinkingLevel(storageKey: string): Promise<ThinkingLevel | null> {
   try {
     const value = await SecureStore.getItemAsync(storageKey);
-    if (
-      value === "off" ||
-      value === "low" ||
-      value === "medium" ||
-      value === "high" ||
-      value === "xhigh"
-    ) {
+    if (value === "off" || value === "low" || value === "medium" || value === "high" || value === "xhigh") {
       return value;
     }
     return null;
@@ -61,10 +57,7 @@ export interface ThinkingProviderProps extends PropsWithChildren {
 }
 
 export function ThinkingProvider({ workspaceId, children }: ThinkingProviderProps): JSX.Element {
-  const storageKey = useMemo(
-    () => `${STORAGE_NAMESPACE}.${sanitizeWorkspaceId(workspaceId)}`,
-    [workspaceId]
-  );
+  const storageKey = useMemo(() => `${STORAGE_NAMESPACE}.${sanitizeWorkspaceId(workspaceId)}`, [workspaceId]);
   const [thinkingLevel, setThinkingLevelState] = useState<ThinkingLevel>("off");
 
   useEffect(() => {
@@ -92,11 +85,7 @@ export function ThinkingProvider({ workspaceId, children }: ThinkingProviderProp
     [storageKey]
   );
 
-  return (
-    <ThinkingContext.Provider value={{ thinkingLevel, setThinkingLevel }}>
-      {children}
-    </ThinkingContext.Provider>
-  );
+  return <ThinkingContext.Provider value={{ thinkingLevel, setThinkingLevel }}>{children}</ThinkingContext.Provider>;
 }
 
 export function useThinkingLevel(): [ThinkingLevel, (level: ThinkingLevel) => void] {

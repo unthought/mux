@@ -1,25 +1,18 @@
-import type { ReactNode } from "react";
-import {
-  createContext,
-  useCallback,
-  useContext,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
 import type { LanguageModelV2Usage } from "@ai-sdk/provider";
-import type { ChatUsageDisplay } from "@/common/utils/tokens/usageAggregator";
-import { sumUsageHistory } from "@/common/utils/tokens/usageAggregator";
-import { createDisplayUsage } from "@/common/utils/tokens/displayUsage";
-import type { ChatStats } from "@/common/types/chatStats.ts";
-import type { MuxMessage } from "@/common/types/message.ts";
+import type { ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+
 import type { WorkspaceChatMessage } from "@/common/orpc/types";
 import { isMuxMessage, isStreamEnd } from "@/common/orpc/types";
+import type { ChatStats } from "@/common/types/chatStats.ts";
+import type { MuxMessage } from "@/common/types/message.ts";
 import type { StreamEndEvent, StreamAbortEvent } from "@/common/types/stream.ts";
+import { createDisplayUsage } from "@/common/utils/tokens/displayUsage";
+import type { ChatUsageDisplay } from "@/common/utils/tokens/usageAggregator";
+import { sumUsageHistory } from "@/common/utils/tokens/usageAggregator";
 
-import type { WorkspaceChatEvent } from "../types";
 import { useORPC } from "../orpc/react";
+import type { WorkspaceChatEvent } from "../types";
 
 interface UsageEntry {
   messageId: string;
@@ -46,11 +39,7 @@ interface ConsumerIdleState {
   status: "idle";
 }
 
-type ConsumerState =
-  | ConsumerReadyState
-  | ConsumerLoadingState
-  | ConsumerErrorState
-  | ConsumerIdleState;
+type ConsumerState = ConsumerReadyState | ConsumerLoadingState | ConsumerErrorState | ConsumerIdleState;
 
 interface WorkspaceCostContextValue {
   usageHistory: ChatUsageDisplay[];
@@ -79,8 +68,7 @@ function normalizeUsage(
     return null;
   }
 
-  const model =
-    typeof metadata.model === "string" && metadata.model.length > 0 ? metadata.model : "unknown";
+  const model = typeof metadata.model === "string" && metadata.model.length > 0 ? metadata.model : "unknown";
   const display = createDisplayUsage(metadata.usage, model, metadata.providerMetadata);
   if (!display) {
     return null;
@@ -96,9 +84,7 @@ function normalizeUsage(
       ? metadata.historySequence
       : Number.MAX_SAFE_INTEGER;
   const timestamp =
-    typeof metadata.timestamp === "number" && Number.isFinite(metadata.timestamp)
-      ? metadata.timestamp
-      : Date.now();
+    typeof metadata.timestamp === "number" && Number.isFinite(metadata.timestamp) ? metadata.timestamp : Date.now();
 
   return {
     messageId,
@@ -331,16 +317,7 @@ export function WorkspaceCostProvider({
       refreshConsumers,
       recordStreamUsage,
     }),
-    [
-      usageHistory,
-      lastUsage,
-      sessionUsage,
-      totalTokens,
-      isInitialized,
-      consumers,
-      refreshConsumers,
-      recordStreamUsage,
-    ]
+    [usageHistory, lastUsage, sessionUsage, totalTokens, isInitialized, consumers, refreshConsumers, recordStreamUsage]
   );
 
   return <WorkspaceCostContext.Provider value={value}>{children}</WorkspaceCostContext.Provider>;

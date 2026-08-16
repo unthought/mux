@@ -1,12 +1,13 @@
+import { Ionicons } from "@expo/vector-icons";
+import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import type { JSX } from "react";
 import { useState } from "react";
-import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { Pressable } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
-import WorkspaceScreen from "../../src/screens/WorkspaceScreen";
-import { WorkspaceActionSheet } from "../../src/components/WorkspaceActionSheet";
+
 import { CostUsageSheet } from "../../src/components/CostUsageSheet";
+import { WorkspaceActionSheet } from "../../src/components/WorkspaceActionSheet";
 import { WorkspaceCostProvider } from "../../src/contexts/WorkspaceCostContext";
+import WorkspaceScreen from "../../src/screens/WorkspaceScreen";
 
 function WorkspaceContent(): JSX.Element {
   const params = useLocalSearchParams();
@@ -80,11 +81,7 @@ function WorkspaceContent(): JSX.Element {
           }}
         />
         <WorkspaceScreen />
-        <WorkspaceActionSheet
-          visible={showActionSheet}
-          onClose={() => setShowActionSheet(false)}
-          items={actionItems}
-        />
+        <WorkspaceActionSheet visible={showActionSheet} onClose={() => setShowActionSheet(false)} items={actionItems} />
         <CostUsageSheet visible={showCostSheet} onClose={() => setShowCostSheet(false)} />
       </>
     </WorkspaceCostProvider>

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test";
-import type { WorkspaceChatEvent } from "../types";
+
 import type { TodoItem } from "../components/TodoItemView";
+import type { WorkspaceChatEvent } from "../types";
 import { areTodosEqual, extractTodosFromEvent } from "./todoLifecycle";
 
 describe("todoLifecycle", () => {

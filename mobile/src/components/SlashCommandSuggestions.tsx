@@ -1,7 +1,9 @@
 import { FlatList, Pressable, View, type ListRenderItemInfo } from "react-native";
+
 import type { SlashSuggestion } from "@/browser/utils/slashCommands/types";
-import { ThemedText } from "./ThemedText";
+
 import { useTheme } from "../theme";
+import { ThemedText } from "./ThemedText";
 
 interface SlashCommandSuggestionsProps {
   suggestions: SlashSuggestion[];

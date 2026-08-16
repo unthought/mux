@@ -1,6 +1,6 @@
-import { assert } from "./assert";
-import type { WorkspaceChatEvent, DisplayedMessage } from "../types";
 import type { TodoItem } from "../components/TodoItemView";
+import type { WorkspaceChatEvent, DisplayedMessage } from "../types";
+import { assert } from "./assert";
 
 const TODO_STATUSES: ReadonlyArray<TodoItem["status"]> = ["pending", "in_progress", "completed"];
 
@@ -29,10 +29,7 @@ function validateTodos(todos: TodoItem[]): void {
   todos.forEach((todo, index) => {
     assert(typeof todo === "object" && todo !== null, `Todo at index ${index} must be an object`);
     assert(typeof todo.content === "string", `Todo at index ${index} must include content`);
-    assert(
-      isTodoStatus(todo.status),
-      `Todo at index ${index} has invalid status: ${String(todo.status)}`
-    );
+    assert(isTodoStatus(todo.status), `Todo at index ${index} has invalid status: ${String(todo.status)}`);
   });
 }
 

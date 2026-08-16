@@ -1,9 +1,10 @@
 import type { JSX } from "react";
 import { ScrollView, TextInput, View } from "react-native";
-import { useTheme } from "../src/theme";
+
 import { Surface } from "../src/components/Surface";
 import { ThemedText } from "../src/components/ThemedText";
 import { useAppConfig } from "../src/contexts/AppConfigContext";
+import { useTheme } from "../src/theme";
 
 export default function Settings(): JSX.Element {
   const theme = useTheme();
@@ -91,12 +92,9 @@ export default function Settings(): JSX.Element {
             />
           </View>
 
-          <ThemedText
-            variant="caption"
-            style={{ marginTop: spacing.xs, color: theme.colors.foregroundMuted }}
-          >
-            Tip: Set MUX_SERVER_AUTH_TOKEN on the server and pass the token here. The app forwards
-            it as a query parameter on WebSocket connections.
+          <ThemedText variant="caption" style={{ marginTop: spacing.xs, color: theme.colors.foregroundMuted }}>
+            Tip: Set MUX_SERVER_AUTH_TOKEN on the server and pass the token here. The app forwards it as a query
+            parameter on WebSocket connections.
           </ThemedText>
         </View>
       </Surface>

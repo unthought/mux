@@ -1,7 +1,8 @@
+import { Ionicons } from "@expo/vector-icons";
 import type { JSX } from "react";
 import { memo, useState } from "react";
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
+
 import { useTheme } from "../../theme";
 import type { FileTreeNode } from "../../utils/git/numstatParser";
 
@@ -42,9 +43,7 @@ export const ReviewFilters = memo<ReviewFiltersProps>(
     const currentBaseLabel = COMMON_BASES.find((b) => b.value === diffBase)?.label || diffBase;
 
     // Extract file name from path for display
-    const selectedFileName = selectedFilePath
-      ? selectedFilePath.split("/").pop() || selectedFilePath
-      : null;
+    const selectedFileName = selectedFilePath ? selectedFilePath.split("/").pop() || selectedFilePath : null;
 
     // Flatten file tree for modal display
     const flattenTree = (node: FileTreeNode): Array<{ path: string; name: string }> => {
@@ -73,12 +72,8 @@ export const ReviewFilters = memo<ReviewFiltersProps>(
             style={[styles.filterButton, { backgroundColor: theme.colors.surface }]}
             onPress={() => setShowBaseModal(true)}
           >
-            <Text style={[styles.filterLabel, { color: theme.colors.foregroundSecondary }]}>
-              Base:
-            </Text>
-            <Text style={[styles.filterValue, { color: theme.colors.foregroundPrimary }]}>
-              {currentBaseLabel}
-            </Text>
+            <Text style={[styles.filterLabel, { color: theme.colors.foregroundSecondary }]}>Base:</Text>
+            <Text style={[styles.filterValue, { color: theme.colors.foregroundPrimary }]}>{currentBaseLabel}</Text>
             <Ionicons name="chevron-down" size={16} color={theme.colors.foregroundSecondary} />
           </Pressable>
 
@@ -96,9 +91,7 @@ export const ReviewFilters = memo<ReviewFiltersProps>(
               style={[
                 styles.toggleText,
                 {
-                  color: includeUncommitted
-                    ? theme.colors.foregroundInverted
-                    : theme.colors.foregroundPrimary,
+                  color: includeUncommitted ? theme.colors.foregroundInverted : theme.colors.foregroundPrimary,
                 },
               ]}
             >
@@ -119,9 +112,7 @@ export const ReviewFilters = memo<ReviewFiltersProps>(
             onPress={() => setShowFileModal(true)}
           >
             <Ionicons name="document-text" size={16} color={theme.colors.foregroundSecondary} />
-            <Text style={[styles.filterLabel, { color: theme.colors.foregroundSecondary }]}>
-              File:
-            </Text>
+            <Text style={[styles.filterLabel, { color: theme.colors.foregroundSecondary }]}>File:</Text>
             <Text style={[styles.filterValue, { color: theme.colors.foregroundPrimary }]}>
               {selectedFileName || "All files"}
             </Text>
@@ -139,21 +130,14 @@ export const ReviewFilters = memo<ReviewFiltersProps>(
         </View>
 
         {/* Base Selection Modal */}
-        <Modal
-          visible={showBaseModal}
-          transparent
-          animationType="fade"
-          onRequestClose={() => setShowBaseModal(false)}
-        >
+        <Modal visible={showBaseModal} transparent animationType="fade" onRequestClose={() => setShowBaseModal(false)}>
           <Pressable style={styles.modalOverlay} onPress={() => setShowBaseModal(false)}>
             <View
               style={[styles.modalContent, { backgroundColor: theme.colors.surface }]}
               onStartShouldSetResponder={() => true}
             >
               <View style={[styles.modalHeader, { borderBottomColor: theme.colors.border }]}>
-                <Text style={[styles.modalTitle, { color: theme.colors.foregroundPrimary }]}>
-                  Compare against
-                </Text>
+                <Text style={[styles.modalTitle, { color: theme.colors.foregroundPrimary }]}>Compare against</Text>
                 <Pressable onPress={() => setShowBaseModal(false)} style={styles.closeButton}>
                   <Ionicons name="close" size={24} color={theme.colors.foregroundSecondary} />
                 </Pressable>
@@ -179,18 +163,13 @@ export const ReviewFilters = memo<ReviewFiltersProps>(
                       style={[
                         styles.optionText,
                         {
-                          color:
-                            diffBase === base.value
-                              ? theme.colors.accent
-                              : theme.colors.foregroundPrimary,
+                          color: diffBase === base.value ? theme.colors.accent : theme.colors.foregroundPrimary,
                         },
                       ]}
                     >
                       {base.label}
                     </Text>
-                    {diffBase === base.value && (
-                      <Ionicons name="checkmark" size={20} color={theme.colors.accent} />
-                    )}
+                    {diffBase === base.value && <Ionicons name="checkmark" size={20} color={theme.colors.accent} />}
                   </Pressable>
                 ))}
               </ScrollView>
@@ -199,21 +178,14 @@ export const ReviewFilters = memo<ReviewFiltersProps>(
         </Modal>
 
         {/* File Selection Modal */}
-        <Modal
-          visible={showFileModal}
-          transparent
-          animationType="fade"
-          onRequestClose={() => setShowFileModal(false)}
-        >
+        <Modal visible={showFileModal} transparent animationType="fade" onRequestClose={() => setShowFileModal(false)}>
           <Pressable style={styles.modalOverlay} onPress={() => setShowFileModal(false)}>
             <View
               style={[styles.modalContent, { backgroundColor: theme.colors.surface }]}
               onStartShouldSetResponder={() => true}
             >
               <View style={[styles.modalHeader, { borderBottomColor: theme.colors.border }]}>
-                <Text style={[styles.modalTitle, { color: theme.colors.foregroundPrimary }]}>
-                  Filter by file
-                </Text>
+                <Text style={[styles.modalTitle, { color: theme.colors.foregroundPrimary }]}>Filter by file</Text>
                 <Pressable onPress={() => setShowFileModal(false)} style={styles.closeButton}>
                   <Ionicons name="close" size={24} color={theme.colors.foregroundSecondary} />
                 </Pressable>
@@ -238,19 +210,14 @@ export const ReviewFilters = memo<ReviewFiltersProps>(
                     style={[
                       styles.optionText,
                       {
-                        color:
-                          selectedFilePath === null
-                            ? theme.colors.accent
-                            : theme.colors.foregroundPrimary,
+                        color: selectedFilePath === null ? theme.colors.accent : theme.colors.foregroundPrimary,
                         fontWeight: "600",
                       },
                     ]}
                   >
                     All files
                   </Text>
-                  {selectedFilePath === null && (
-                    <Ionicons name="checkmark" size={20} color={theme.colors.accent} />
-                  )}
+                  {selectedFilePath === null && <Ionicons name="checkmark" size={20} color={theme.colors.accent} />}
                 </Pressable>
 
                 {/* Individual files */}
@@ -273,10 +240,7 @@ export const ReviewFilters = memo<ReviewFiltersProps>(
                       style={[
                         styles.optionText,
                         {
-                          color:
-                            selectedFilePath === file.path
-                              ? theme.colors.accent
-                              : theme.colors.foregroundPrimary,
+                          color: selectedFilePath === file.path ? theme.colors.accent : theme.colors.foregroundPrimary,
                         },
                       ]}
                     >

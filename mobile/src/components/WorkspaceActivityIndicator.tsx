@@ -1,7 +1,8 @@
 import type { JSX } from "react";
 import { StyleSheet, View } from "react-native";
-import type { WorkspaceActivitySnapshot } from "../types";
+
 import { useTheme } from "../theme";
+import type { WorkspaceActivitySnapshot } from "../types";
 import { getWorkspaceActivityPresentation } from "../utils/workspaceActivity";
 import { ThemedText } from "./ThemedText";
 

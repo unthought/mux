@@ -1,14 +1,14 @@
+import type { InferClientInputs } from "@orpc/client";
+
 import type { ParsedCommand } from "@/browser/utils/slashCommands/types";
 import type { RuntimeConfig } from "@/common/types/runtime";
 import { RUNTIME_MODE, SSH_RUNTIME_PREFIX } from "@/common/types/runtime";
-import type { FrontendWorkspaceMetadata } from "../types";
-import type { ORPCClient } from "../orpc/client";
-import { buildMobileCompactionPayload } from "./slashCommandHelpers";
-import type { InferClientInputs } from "@orpc/client";
 
-type SendMessageOptions = NonNullable<
-  InferClientInputs<ORPCClient>["workspace"]["sendMessage"]["options"]
->;
+import type { ORPCClient } from "../orpc/client";
+import type { FrontendWorkspaceMetadata } from "../types";
+import { buildMobileCompactionPayload } from "./slashCommandHelpers";
+
+type SendMessageOptions = NonNullable<InferClientInputs<ORPCClient>["workspace"]["sendMessage"]["options"]>;
 
 export interface SlashCommandRunnerContext {
   client: Pick<ORPCClient, "workspace" | "projects">;
@@ -42,10 +42,7 @@ export async function executeSlashCommand(
       ctx.showInfo("Model updated", `Switched to ${parsed.modelString}`);
       return true;
     case "model-help":
-      ctx.showInfo(
-        "/model",
-        "Usage: /model <model-id>. Example: /model anthropic:claude-sonnet-4-5"
-      );
+      ctx.showInfo("/model", "Usage: /model <model-id>. Example: /model anthropic:claude-sonnet-4-5");
       return true;
     case "fork":
       return handleFork(ctx, parsed);
@@ -84,10 +81,7 @@ function ensureWorkspaceId(ctx: SlashCommandRunnerContext): string {
   return ctx.workspaceId;
 }
 
-async function handleTruncate(
-  ctx: SlashCommandRunnerContext,
-  percentage: number
-): Promise<boolean> {
+async function handleTruncate(ctx: SlashCommandRunnerContext, percentage: number): Promise<boolean> {
   try {
     const workspaceId = ensureWorkspaceId(ctx);
     const result = await ctx.client.workspace.truncateHistory({ workspaceId, percentage });
@@ -108,10 +102,7 @@ async function handleTruncate(
   }
 }
 
-async function handleIdleCompaction(
-  ctx: SlashCommandRunnerContext,
-  hours: number | null
-): Promise<boolean> {
+async function handleIdleCompaction(ctx: SlashCommandRunnerContext, hours: number | null): Promise<boolean> {
   const projectPath = ctx.metadata?.projectPath;
   if (!projectPath) {
     ctx.showError("Idle compaction", "Current workspace project path unknown");
@@ -125,10 +116,7 @@ async function handleIdleCompaction(
       return true;
     }
 
-    ctx.showInfo(
-      "Idle compaction",
-      hours === null ? "Disabled idle compaction" : `Idle compaction set to ${hours}h`
-    );
+    ctx.showInfo("Idle compaction", hours === null ? "Disabled idle compaction" : `Idle compaction set to ${hours}h`);
 
     return true;
   } catch (error) {
@@ -143,10 +131,7 @@ async function handleCompaction(
 ): Promise<boolean> {
   try {
     const workspaceId = ensureWorkspaceId(ctx);
-    const { messageText, metadata, sendOptions } = buildMobileCompactionPayload(
-      parsed,
-      ctx.sendMessageOptions
-    );
+    const { messageText, metadata, sendOptions } = buildMobileCompactionPayload(parsed, ctx.sendMessageOptions);
 
     const result = await ctx.client.workspace.sendMessage({
       workspaceId,
@@ -161,19 +146,12 @@ async function handleCompaction(
     if (!result.success) {
       const err = result.error;
       const errorMsg =
-        typeof err === "string"
-          ? err
-          : err?.type === "unknown"
-            ? err.raw
-            : (err?.type ?? "Failed to start compaction");
+        typeof err === "string" ? err : err?.type === "unknown" ? err.raw : (err?.type ?? "Failed to start compaction");
       ctx.showError("Compaction", errorMsg);
       return true;
     }
 
-    ctx.showInfo(
-      "Compaction",
-      "Summarization started. You will see the summary when it completes."
-    );
+    ctx.showInfo("Compaction", "Summarization started. You will see the summary when it completes.");
     ctx.onCancelEdit();
     return true;
   } catch (error) {
@@ -273,10 +251,7 @@ async function resolveTrunkBranch(
     const { recommendedTrunk, branches } = await ctx.client.projects.listBranches({ projectPath });
     return recommendedTrunk ?? branches?.[0] ?? "main";
   } catch (error) {
-    ctx.showInfo(
-      "Branches",
-      `Failed to load branches (${getErrorMessage(error)}). Defaulting to main.`
-    );
+    ctx.showInfo("Branches", `Failed to load branches (${getErrorMessage(error)}). Defaulting to main.`);
     return "main";
   }
 }

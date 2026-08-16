@@ -1,6 +1,7 @@
+import { Ionicons } from "@expo/vector-icons";
 import { useEffect, useRef } from "react";
 import { Animated, Pressable, View } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
+
 import { useTheme } from "../theme";
 import { ThemedText } from "./ThemedText";
 
@@ -68,12 +69,7 @@ export function ToastBanner(props: ToastBannerProps) {
           gap: theme.spacing.sm,
         }}
       >
-        <Ionicons
-          name={palette.icon}
-          size={18}
-          color={palette.iconColor}
-          style={{ marginTop: 1 }}
-        />
+        <Ionicons name={palette.icon} size={18} color={palette.iconColor} style={{ marginTop: 1 }} />
         <View style={{ flex: 1, gap: 2 }}>
           <ThemedText weight="semibold" style={{ color: palette.text }}>
             {props.toast.title}

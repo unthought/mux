@@ -1,14 +1,11 @@
 import type { JSX } from "react";
 import { useMemo } from "react";
 import Markdown from "react-native-markdown-display";
+
+import { createMarkdownStyles, type MarkdownVariant, type MarkdownStyle } from "../messages/markdownStyles";
+import { normalizeMarkdown } from "../messages/markdownUtils";
 import { useTheme } from "../theme";
 import { assert } from "../utils/assert";
-import {
-  createMarkdownStyles,
-  type MarkdownVariant,
-  type MarkdownStyle,
-} from "../messages/markdownStyles";
-import { normalizeMarkdown } from "../messages/markdownUtils";
 
 export interface MarkdownMessageBodyProps {
   content: string | null | undefined;

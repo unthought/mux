@@ -1,19 +1,12 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
-import {
-  ActivityIndicator,
-  Animated,
-  Modal,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
-import { useTheme } from "../theme";
-import { useWorkspaceCost } from "../contexts/WorkspaceCostContext";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { ActivityIndicator, Animated, Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+
 import type { ChatUsageDisplay } from "@/common/utils/tokens/usageAggregator";
+
+import { useWorkspaceCost } from "../contexts/WorkspaceCostContext";
+import { useTheme } from "../theme";
 
 interface CostUsageSheetProps {
   visible: boolean;
@@ -79,15 +72,8 @@ function renderComponentRow(
 export function CostUsageSheet({ visible, onClose }: CostUsageSheetProps): JSX.Element | null {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
-  const {
-    usageHistory,
-    lastUsage,
-    sessionUsage,
-    totalTokens,
-    isInitialized,
-    consumers,
-    refreshConsumers,
-  } = useWorkspaceCost();
+  const { usageHistory, lastUsage, sessionUsage, totalTokens, isInitialized, consumers, refreshConsumers } =
+    useWorkspaceCost();
   const [viewMode, setViewMode] = useState<ViewMode>("session");
   const slideAnim = useRef(new Animated.Value(400)).current;
 
@@ -130,13 +116,7 @@ export function CostUsageSheet({ visible, onClose }: CostUsageSheetProps): JSX.E
   }
 
   return (
-    <Modal
-      visible={visible}
-      transparent
-      animationType="fade"
-      onRequestClose={onClose}
-      statusBarTranslucent
-    >
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose} statusBarTranslucent>
       <Pressable style={styles.backdrop} onPress={onClose}>
         <View style={StyleSheet.absoluteFill} />
       </Pressable>
@@ -152,9 +132,7 @@ export function CostUsageSheet({ visible, onClose }: CostUsageSheetProps): JSX.E
           ]}
         >
           <View style={styles.header}>
-            <Text style={[styles.headerTitle, { color: theme.colors.foregroundPrimary }]}>
-              Cost &amp; Usage
-            </Text>
+            <Text style={[styles.headerTitle, { color: theme.colors.foregroundPrimary }]}>Cost &amp; Usage</Text>
             <Pressable onPress={onClose} hitSlop={8}>
               <Ionicons name="close" size={20} color={theme.colors.foregroundMuted} />
             </Pressable>
@@ -165,8 +143,7 @@ export function CostUsageSheet({ visible, onClose }: CostUsageSheetProps): JSX.E
               style={[
                 styles.toggleButton,
                 {
-                  backgroundColor:
-                    viewMode === "session" ? theme.colors.accent : theme.colors.surfaceSecondary,
+                  backgroundColor: viewMode === "session" ? theme.colors.accent : theme.colors.surfaceSecondary,
                 },
               ]}
               onPress={() => setViewMode("session")}
@@ -175,10 +152,7 @@ export function CostUsageSheet({ visible, onClose }: CostUsageSheetProps): JSX.E
                 style={[
                   styles.toggleLabel,
                   {
-                    color:
-                      viewMode === "session"
-                        ? theme.colors.background
-                        : theme.colors.foregroundPrimary,
+                    color: viewMode === "session" ? theme.colors.background : theme.colors.foregroundPrimary,
                   },
                 ]}
               >
@@ -189,8 +163,7 @@ export function CostUsageSheet({ visible, onClose }: CostUsageSheetProps): JSX.E
               style={[
                 styles.toggleButton,
                 {
-                  backgroundColor:
-                    viewMode === "last" ? theme.colors.accent : theme.colors.surfaceSecondary,
+                  backgroundColor: viewMode === "last" ? theme.colors.accent : theme.colors.surfaceSecondary,
                 },
               ]}
               onPress={() => setViewMode("last")}
@@ -199,10 +172,7 @@ export function CostUsageSheet({ visible, onClose }: CostUsageSheetProps): JSX.E
                 style={[
                   styles.toggleLabel,
                   {
-                    color:
-                      viewMode === "last"
-                        ? theme.colors.background
-                        : theme.colors.foregroundPrimary,
+                    color: viewMode === "last" ? theme.colors.background : theme.colors.foregroundPrimary,
                   },
                 ]}
               >
@@ -214,9 +184,7 @@ export function CostUsageSheet({ visible, onClose }: CostUsageSheetProps): JSX.E
           {!isInitialized ? (
             <View style={styles.loadingState}>
               <ActivityIndicator color={theme.colors.accent} />
-              <Text style={[styles.loadingLabel, { color: theme.colors.foregroundMuted }]}>
-                Loading usage…
-              </Text>
+              <Text style={[styles.loadingLabel, { color: theme.colors.foregroundMuted }]}>Loading usage…</Text>
             </View>
           ) : currentUsage ? (
             <ScrollView
@@ -233,16 +201,12 @@ export function CostUsageSheet({ visible, onClose }: CostUsageSheetProps): JSX.E
                 </Text>
               </View>
 
-              {COMPONENT_ROWS.map(({ key, label }) =>
-                renderComponentRow(label, currentUsage[key], theme)
-              )}
+              {COMPONENT_ROWS.map(({ key, label }) => renderComponentRow(label, currentUsage[key], theme))}
 
               <View style={styles.sectionDivider} />
 
               <View style={styles.sectionHeader}>
-                <Text style={[styles.sectionTitle, { color: theme.colors.foregroundPrimary }]}>
-                  Consumer breakdown
-                </Text>
+                <Text style={[styles.sectionTitle, { color: theme.colors.foregroundPrimary }]}>Consumer breakdown</Text>
                 {consumersReady ? (
                   <Text style={[styles.sectionSubtitle, { color: theme.colors.foregroundMuted }]}>
                     Tokenizer: {consumersReady.tokenizerName || "unknown"}
@@ -252,9 +216,7 @@ export function CostUsageSheet({ visible, onClose }: CostUsageSheetProps): JSX.E
 
               {consumersReady ? (
                 consumersReady.consumers.length === 0 ? (
-                  <Text style={[styles.emptyText, { color: theme.colors.foregroundMuted }]}>
-                    No consumer data yet.
-                  </Text>
+                  <Text style={[styles.emptyText, { color: theme.colors.foregroundMuted }]}>No consumer data yet.</Text>
                 ) : (
                   <View style={styles.consumerTable}>
                     {consumersReady.consumers.map((consumer) => (
@@ -262,26 +224,14 @@ export function CostUsageSheet({ visible, onClose }: CostUsageSheetProps): JSX.E
                         key={consumer.name}
                         style={[styles.consumerRow, { borderBottomColor: theme.colors.border }]}
                       >
-                        <Text
-                          style={[styles.consumerName, { color: theme.colors.foregroundPrimary }]}
-                        >
+                        <Text style={[styles.consumerName, { color: theme.colors.foregroundPrimary }]}>
                           {consumer.name}
                         </Text>
                         <View style={styles.consumerMetrics}>
-                          <Text
-                            style={[
-                              styles.consumerValue,
-                              { color: theme.colors.foregroundPrimary },
-                            ]}
-                          >
+                          <Text style={[styles.consumerValue, { color: theme.colors.foregroundPrimary }]}>
                             {formatTokens(consumer.tokens)}
                           </Text>
-                          <Text
-                            style={[
-                              styles.consumerPercentage,
-                              { color: theme.colors.foregroundMuted },
-                            ]}
-                          >
+                          <Text style={[styles.consumerPercentage, { color: theme.colors.foregroundMuted }]}>
                             {consumer.percentage.toFixed(1)}%
                           </Text>
                         </View>
@@ -304,9 +254,7 @@ export function CostUsageSheet({ visible, onClose }: CostUsageSheetProps): JSX.E
                   {isConsumersLoading ? (
                     <ActivityIndicator color={theme.colors.accent} />
                   ) : (
-                    <Text
-                      style={[styles.loadButtonLabel, { color: theme.colors.foregroundPrimary }]}
-                    >
+                    <Text style={[styles.loadButtonLabel, { color: theme.colors.foregroundPrimary }]}>
                       Load detailed breakdown
                     </Text>
                   )}
@@ -314,9 +262,7 @@ export function CostUsageSheet({ visible, onClose }: CostUsageSheetProps): JSX.E
               )}
 
               {consumersError ? (
-                <Text style={[styles.errorText, { color: theme.colors.danger }]}>
-                  {consumersError}
-                </Text>
+                <Text style={[styles.errorText, { color: theme.colors.danger }]}>{consumersError}</Text>
               ) : null}
             </ScrollView>
           ) : (

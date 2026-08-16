@@ -2,15 +2,12 @@ import type { JSX } from "react";
 import { useEffect, useMemo, useState } from "react";
 import { View } from "react-native";
 
-import type {
-  LegacyProposePlanToolArgs,
-  ProposePlanToolResult,
-  ToolErrorResult,
-} from "@/common/types/tools";
+import type { LegacyProposePlanToolArgs, ProposePlanToolResult, ToolErrorResult } from "@/common/types/tools";
+
+import { useORPC } from "../orpc/react";
 import { ProposePlanCard } from "./ProposePlanCard";
 import { Surface } from "./Surface";
 import { ThemedText } from "./ThemedText";
-import { useORPC } from "../orpc/react";
 
 type ToolStatus = "pending" | "executing" | "completed" | "failed" | "interrupted";
 
@@ -54,9 +51,7 @@ function isLegacyProposePlanToolArgs(val: unknown): val is LegacyProposePlanTool
   return typeof record.title === "string" && typeof record.plan === "string";
 }
 
-function isProposePlanToolResult(
-  val: unknown
-): val is ProposePlanToolResult & { planContent?: string } {
+function isProposePlanToolResult(val: unknown): val is ProposePlanToolResult & { planContent?: string } {
   if (!val || typeof val !== "object") {
     return false;
   }
@@ -113,10 +108,7 @@ export function ProposePlanToolCard(props: ProposePlanToolCardProps): JSX.Elemen
     }
 
     // Back-compat: some tool calls may include planContent inline
-    if (
-      typeof successResult.planContent === "string" &&
-      successResult.planContent.trim().length > 0
-    ) {
+    if (typeof successResult.planContent === "string" && successResult.planContent.trim().length > 0) {
       setPlanContent(successResult.planContent);
       return;
     }
@@ -227,15 +219,12 @@ export function ProposePlanToolCard(props: ProposePlanToolCardProps): JSX.Elemen
     );
   }
 
-  const title =
-    extractTitleFromMarkdown(planContent) ?? successResult.planPath.split("/").pop() ?? "Plan";
+  const title = extractTitleFromMarkdown(planContent) ?? successResult.planPath.split("/").pop() ?? "Plan";
 
   const onStartHere = props.onStartHere;
   const handleStartHereWithPlan = onStartHere
     ? async () => {
-        const fullContent = /^#\s+/m.test(planContent)
-          ? planContent
-          : `# ${title}\n\n${planContent}`;
+        const fullContent = /^#\s+/m.test(planContent) ? planContent : `# ${title}\n\n${planContent}`;
         await onStartHere(fullContent);
       }
     : undefined;
