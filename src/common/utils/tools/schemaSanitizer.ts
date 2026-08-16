@@ -97,6 +97,143 @@ function stripUnsupportedProperties(schema: unknown): void {
   }
 }
 
+function isUnknownArray(value: unknown): value is unknown[] {
+  return Array.isArray(value);
+}
+
+function addNullToOptionalSchema(schema: unknown): void {
+  if (typeof schema !== "object" || schema === null || Array.isArray(schema)) {
+    return;
+  }
+
+  const obj = schema as Record<string, unknown>;
+  if (typeof obj.type === "string") {
+    if (obj.type !== "null") {
+      obj.type = [obj.type, "null"];
+    }
+  } else if (isUnknownArray(obj.type)) {
+    if (!obj.type.includes("null")) {
+      obj.type = [...obj.type, "null"];
+    }
+  } else if (isUnknownArray(obj.anyOf)) {
+    obj.anyOf = [...obj.anyOf, { type: "null" }];
+  } else if (isUnknownArray(obj.oneOf)) {
+    obj.oneOf = [...obj.oneOf, { type: "null" }];
+  } else if (!isUnknownArray(obj.enum)) {
+    // `$ref`, `allOf`, `const`, and other valid JSON Schema forms cannot be
+    // made nullable by adding a type. Preserve the original schema as one
+    // branch and add null as the strict-mode omission placeholder.
+    const originalSchema = { ...obj };
+    for (const key of Object.keys(obj)) {
+      delete obj[key];
+    }
+    obj.anyOf = [originalSchema, { type: "null" }];
+    return;
+  }
+
+  // A nullable type is still rejected when enum excludes null.
+  if (isUnknownArray(obj.enum) && !obj.enum.includes(null)) {
+    obj.enum = [...obj.enum, null];
+  }
+}
+
+/**
+ * Preserve JSON Schema optionality after OpenAI strict-mode normalization.
+ * OpenAI requires every object property, so properties omitted from the MCP
+ * schema's `required` array must accept null as the strict-mode placeholder.
+ */
+function makeOptionalPropertiesNullable(schema: unknown): void {
+  if (typeof schema !== "object" || schema === null || Array.isArray(schema)) {
+    return;
+  }
+
+  const obj = schema as Record<string, unknown>;
+  if (obj.properties && typeof obj.properties === "object" && !Array.isArray(obj.properties)) {
+    const required = new Set(
+      Array.isArray(obj.required)
+        ? obj.required.filter((value): value is string => typeof value === "string")
+        : []
+    );
+
+    for (const [name, propertySchema] of Object.entries(
+      obj.properties as Record<string, unknown>
+    )) {
+      makeOptionalPropertiesNullable(propertySchema);
+      if (!required.has(name)) {
+        addNullToOptionalSchema(propertySchema);
+      }
+    }
+  }
+
+  if (obj.items) {
+    if (Array.isArray(obj.items)) {
+      for (const itemSchema of obj.items) {
+        makeOptionalPropertiesNullable(itemSchema);
+      }
+    } else {
+      makeOptionalPropertiesNullable(obj.items);
+    }
+  }
+
+  if (obj.additionalProperties && typeof obj.additionalProperties === "object") {
+    makeOptionalPropertiesNullable(obj.additionalProperties);
+  }
+
+  for (const keyword of ["anyOf", "oneOf", "allOf"]) {
+    if (Array.isArray(obj[keyword])) {
+      for (const subSchema of obj[keyword] as unknown[]) {
+        makeOptionalPropertiesNullable(subSchema);
+      }
+    }
+  }
+
+  for (const defsKey of ["definitions", "$defs"]) {
+    if (obj[defsKey] && typeof obj[defsKey] === "object") {
+      for (const defSchema of Object.values(obj[defsKey] as Record<string, unknown>)) {
+        makeOptionalPropertiesNullable(defSchema);
+      }
+    }
+  }
+}
+
+function omitNullishOptionalProperties(value: unknown, schema: unknown): unknown {
+  if (Array.isArray(value)) {
+    const itemSchema =
+      typeof schema === "object" && schema !== null && !Array.isArray(schema)
+        ? (schema as Record<string, unknown>).items
+        : undefined;
+    return value.map((item) => omitNullishOptionalProperties(item, itemSchema));
+  }
+
+  if (typeof value !== "object" || value === null || Array.isArray(schema)) {
+    return value;
+  }
+
+  const schemaObject =
+    typeof schema === "object" && schema !== null ? (schema as Record<string, unknown>) : undefined;
+  const properties =
+    schemaObject?.properties &&
+    typeof schemaObject.properties === "object" &&
+    !Array.isArray(schemaObject.properties)
+      ? (schemaObject.properties as Record<string, unknown>)
+      : undefined;
+  const required = new Set(
+    Array.isArray(schemaObject?.required)
+      ? schemaObject.required.filter((entry): entry is string => typeof entry === "string")
+      : []
+  );
+
+  const result: Record<string, unknown> = {};
+  for (const [name, propertyValue] of Object.entries(value as Record<string, unknown>)) {
+    const propertySchema = properties?.[name];
+    if (propertySchema !== undefined && !required.has(name) && propertyValue == null) {
+      continue;
+    }
+    result[name] = omitNullishOptionalProperties(propertyValue, propertySchema);
+  }
+  return result;
+}
+
 /**
  * Sanitize a tool's parameter schema for OpenAI Responses API compatibility.
  *
@@ -129,19 +266,36 @@ export function sanitizeToolSchemaForOpenAI(tool: Tool): Tool {
       // Deep clone and sanitize
       const clonedSchema = JSON.parse(JSON.stringify(rawJsonSchema)) as Record<string, unknown>;
       stripUnsupportedProperties(clonedSchema);
+      makeOptionalPropertiesNullable(clonedSchema);
 
-      // Create a new inputSchema wrapper that returns our sanitized schema
+      // Create a new inputSchema wrapper that returns our sanitized schema.
       const sanitizedInputSchema = {
         ...inputSchemaWrapper,
-        // Override the jsonSchema getter with our sanitized version
+        // Override the jsonSchema getter with our sanitized version.
         get jsonSchema() {
           return clonedSchema;
         },
       };
 
+      const originalExecute =
+        typeof toolRecord.execute === "function"
+          ? (toolRecord.execute as (this: unknown, args: unknown, options: unknown) => unknown)
+          : undefined;
       return {
         ...tool,
         inputSchema: sanitizedInputSchema,
+        ...(originalExecute
+          ? {
+              // Strict mode represents omitted optional values as null. Remove those
+              // placeholders before the MCP SDK serializes the call arguments.
+              execute: (args: unknown, options: unknown) =>
+                originalExecute.call(
+                  tool,
+                  omitNullishOptionalProperties(args, rawJsonSchema),
+                  options
+                ),
+            }
+          : {}),
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
       } as any as Tool;
     }

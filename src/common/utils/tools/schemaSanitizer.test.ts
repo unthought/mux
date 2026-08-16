@@ -201,10 +201,187 @@ describe("schemaSanitizer", () => {
 
       // Unsupported properties should be stripped
       expect(schema.properties.content).toEqual({ type: "string" });
-      expect(schema.properties.count).toEqual({ type: "number" });
+      // `count` is not required by the MCP schema, so OpenAI strict mode needs
+      // a null placeholder while still allowing callers to omit it.
+      expect(schema.properties.count).toEqual({ type: ["number", "null"] });
       // Supported properties should be preserved
       expect(schema.type).toBe("object");
       expect(schema.required).toEqual(["content"]);
+    });
+
+    it("should make optional MCP properties nullable while preserving required properties", () => {
+      const jsonSchema = {
+        type: "object",
+        properties: {
+          body: { type: "string" },
+          issueId: { type: "string" },
+          statusUpdateType: { type: "string", enum: ["project", "initiative"] },
+        },
+        required: ["body"],
+      };
+
+      const mcpTool = {
+        type: "dynamic",
+        description: "MCP comment tool",
+        inputSchema: {
+          get jsonSchema() {
+            return jsonSchema;
+          },
+        },
+        execute: () => Promise.resolve({}),
+      } as unknown as Tool;
+
+      const sanitized = sanitizeToolSchemaForOpenAI(mcpTool);
+      const schema = getInputSchema(sanitized);
+
+      expect(schema.properties.body).toEqual({ type: "string" });
+      expect(schema.properties.issueId).toEqual({ type: ["string", "null"] });
+      expect(schema.properties.statusUpdateType).toEqual({
+        type: ["string", "null"],
+        enum: ["project", "initiative", null],
+      });
+      expect(schema.required).toEqual(["body"]);
+    });
+
+    it("should make optional reference and composition schemas nullable", () => {
+      const jsonSchema = {
+        type: "object",
+        properties: {
+          body: { type: "string" },
+          referencedParent: { $ref: "#/$defs/parentId" },
+          composedParent: { allOf: [{ type: "string" }] },
+        },
+        required: ["body"],
+        $defs: {
+          parentId: { type: "string" },
+        },
+      };
+
+      const mcpTool = {
+        type: "dynamic",
+        description: "MCP comment tool",
+        inputSchema: {
+          get jsonSchema() {
+            return jsonSchema;
+          },
+        },
+        execute: () => Promise.resolve({}),
+      } as unknown as Tool;
+
+      const sanitized = sanitizeToolSchemaForOpenAI(mcpTool);
+      const schema = getInputSchema(sanitized);
+
+      expect(schema.properties.referencedParent).toEqual({
+        anyOf: [{ $ref: "#/$defs/parentId" }, { type: "null" }],
+      });
+      expect(schema.properties.composedParent).toEqual({
+        anyOf: [{ allOf: [{ type: "string" }] }, { type: "null" }],
+      });
+    });
+
+    it("should omit nullish optional MCP arguments before execution", async () => {
+      let receivedArgs: unknown;
+      const jsonSchema = {
+        type: "object",
+        properties: {
+          body: { type: "string" },
+          requiredNullable: { type: ["string", "null"] },
+          issueId: { type: "string" },
+          projectId: { type: "string" },
+        },
+        required: ["body", "requiredNullable"],
+      };
+
+      const mcpTool = {
+        type: "dynamic",
+        description: "MCP comment tool",
+        inputSchema: {
+          get jsonSchema() {
+            return jsonSchema;
+          },
+        },
+        execute: (args: unknown) => {
+          receivedArgs = args;
+          return Promise.resolve({});
+        },
+      } as unknown as Tool;
+
+      const sanitized = sanitizeToolSchemaForOpenAI(mcpTool);
+      await sanitized.execute!(
+        {
+          body: "Evidence",
+          requiredNullable: null,
+          issueId: "UN-220",
+          projectId: null,
+        },
+        {} as never
+      );
+
+      expect(receivedArgs).toEqual({
+        body: "Evidence",
+        requiredNullable: null,
+        issueId: "UN-220",
+      });
+    });
+
+    it("should serialize only the selected Linear comment parent variant", async () => {
+      const parentFields = [
+        "issueId",
+        "projectId",
+        "initiativeId",
+        "documentId",
+        "milestoneId",
+        "statusUpdateId",
+      ] as const;
+      const receivedArgs: unknown[] = [];
+      const jsonSchema = {
+        type: "object",
+        properties: {
+          body: { type: "string" },
+          issueId: { type: "string" },
+          projectId: { type: "string" },
+          initiativeId: { type: "string" },
+          documentId: { type: "string" },
+          milestoneId: { type: "string" },
+          statusUpdateId: { type: "string" },
+          statusUpdateType: { type: "string", enum: ["project", "initiative"] },
+        },
+        required: ["body"],
+      };
+
+      const mcpTool = {
+        type: "dynamic",
+        description: "MCP comment tool",
+        inputSchema: {
+          get jsonSchema() {
+            return jsonSchema;
+          },
+        },
+        execute: (args: unknown) => {
+          receivedArgs.push(args);
+          return Promise.resolve({});
+        },
+      } as unknown as Tool;
+
+      const sanitized = sanitizeToolSchemaForOpenAI(mcpTool);
+      for (const parentField of parentFields) {
+        const args: Record<string, unknown> = {
+          body: `Comment for ${parentField}`,
+          statusUpdateType: parentField === "statusUpdateId" ? "project" : null,
+        };
+        for (const field of parentFields) {
+          args[field] = field === parentField ? `${field}-value` : null;
+        }
+        await sanitized.execute!(args, {} as never);
+      }
+
+      expect(receivedArgs).toEqual(
+        parentFields.map((parentField) => ({
+          body: `Comment for ${parentField}`,
+          [parentField]: `${parentField}-value`,
+          ...(parentField === "statusUpdateId" ? { statusUpdateType: "project" } : {}),
+        }))
+      );
     });
 
     it("should not mutate the original MCP tool inputSchema", () => {
