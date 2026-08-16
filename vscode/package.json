@@ -89,13 +89,19 @@
     "vscode:prepublish": "bun run compile",
     "compile": "node esbuild.config.js",
     "watch": "node esbuild.config.js --watch",
-    "package": "vsce package"
+    "package": "vsce package",
+    "format": "oxfmt --write .",
+    "format:check": "oxfmt --check .",
+    "lint": "oxlint --fix --no-error-on-unmatched-pattern .",
+    "lint:check": "oxlint --no-error-on-unmatched-pattern ."
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
     "@types/vscode": "^1.106.0",
     "@vscode/vsce": "^2.22.0",
     "esbuild": "^0.27.0",
+    "oxfmt": "0.63.0",
+    "oxlint": "1.78.0",
     "typescript": "^5.3.0"
   },
   "repository": {
@@ -106,4 +112,3 @@
   "license": "AGPL-3.0-only",
   "packageManager": "bun@1.1.42"
 }
-

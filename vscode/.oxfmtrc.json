@@ -1,0 +1,43 @@
+{
+  "singleQuote": false,
+  "trailingComma": "es5",
+  "arrowParens": "always",
+  "useTabs": false,
+  "tabWidth": 2,
+  "semi": true,
+  "printWidth": 120,
+  "sortImports": {
+    "groups": [
+      [
+        "value-builtin",
+        "type-builtin"
+      ],
+      [
+        "value-external",
+        "type-external"
+      ],
+      [
+        "value-internal",
+        "type-internal"
+      ],
+      [
+        "value-parent",
+        "type-parent",
+        "value-sibling",
+        "type-sibling",
+        "value-index",
+        "type-index"
+      ],
+      "unknown"
+    ],
+    "newlinesBetween": true
+  },
+  "sortPackageJson": false,
+  "ignorePatterns": [
+    "**/dist/**",
+    "**/node_modules/**",
+    "out/**",
+    ".vscode-test/**",
+    "src/shared/**"
+  ]
+}
