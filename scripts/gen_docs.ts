@@ -711,25 +711,6 @@ async function syncToolHookEnvVars(): Promise<boolean> {
 }
 
 // ---------------------------------------------------------------------------
-// Auto-cleanup workflow sync
-// ---------------------------------------------------------------------------
-
-function generateAutoCleanupWorkflowBlock(): string {
-  const workflowPath = path.join(import.meta.dir, "..", ".github", "workflows", "auto-cleanup.yml");
-  const content = fs.readFileSync(workflowPath, "utf-8");
-  return "```yaml\n" + content.trim() + "\n```";
-}
-
-async function syncAutoCleanupWorkflow(): Promise<boolean> {
-  return syncDoc({
-    docsFile: "guides/github-actions.mdx",
-    sourceLabel: ".github/workflows/auto-cleanup.yml",
-    markerName: "AUTO_CLEANUP_WORKFLOW",
-    generateBlock: generateAutoCleanupWorkflowBlock,
-  });
-}
-
-// ---------------------------------------------------------------------------
 // Deep review skill sync
 // ---------------------------------------------------------------------------
 
@@ -762,7 +743,6 @@ async function main(): Promise<void> {
     syncNotifyDocs(),
     syncProviderEnvVars(),
     syncToolHookEnvVars(),
-    syncAutoCleanupWorkflow(),
     syncDeepReviewSkill(),
   ]);
 
