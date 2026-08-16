@@ -1,8 +1,8 @@
 # Mintlify docs that use JSX comments which prettier mangles
 docs/system-prompt.md
 
-# Expo prebuild outputs (generated + gitignored)
-mobile/.expo/
-mobile/ios/
-mobile/android/
-mobile/expo-env.d.ts
+# Independent nested tooling roots own their own formatting via oxfmt
+# (UN-120); the root formatter must not overlap their ownership.
+mobile/
+packages/chat-components/
+vscode/
