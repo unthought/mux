@@ -28,12 +28,7 @@ export {
   type ChatHostContextValue,
 } from "../../../src/browser/contexts/ChatHostContext";
 
-export {
-  THEME_OPTIONS,
-  ThemeProvider,
-  useTheme,
-  type ThemeMode,
-} from "../../../src/browser/contexts/ThemeContext";
+export { THEME_OPTIONS, ThemeProvider, useTheme, type ThemeMode } from "../../../src/browser/contexts/ThemeContext";
 
 export { createReadOnlyChatHostContext } from "./readOnlyChatHostContext";
 
@@ -42,10 +37,7 @@ export { createReadOnlyChatHostContext } from "./readOnlyChatHostContext";
 // ============================================================================
 
 export { MessageRenderer } from "../../../src/browser/features/Messages/MessageRenderer";
-export {
-  MessageWindow,
-  type ButtonConfig,
-} from "../../../src/browser/features/Messages/MessageWindow";
+export { MessageWindow, type ButtonConfig } from "../../../src/browser/features/Messages/MessageWindow";
 export { UserMessage } from "../../../src/browser/features/Messages/UserMessage";
 export { AssistantMessage } from "../../../src/browser/features/Messages/AssistantMessage";
 export { ToolMessage } from "../../../src/browser/features/Messages/ToolMessage";

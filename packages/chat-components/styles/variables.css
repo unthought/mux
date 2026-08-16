@@ -143,14 +143,34 @@
 }
 
 /* Typography utility classes */
-.text-foreground { color: var(--color-foreground); }
-.text-muted { color: var(--color-muted); }
-.text-thinking-mode { color: var(--color-thinking-mode); }
-.text-plan-mode { color: var(--color-plan-mode); }
-.text-exec-mode { color: var(--color-exec-mode); }
-.text-secondary { color: var(--color-muted); }
+.text-foreground {
+  color: var(--color-foreground);
+}
+.text-muted {
+  color: var(--color-muted);
+}
+.text-thinking-mode {
+  color: var(--color-thinking-mode);
+}
+.text-plan-mode {
+  color: var(--color-plan-mode);
+}
+.text-exec-mode {
+  color: var(--color-exec-mode);
+}
+.text-secondary {
+  color: var(--color-muted);
+}
 
-.bg-code-bg { background-color: var(--color-code-bg); }
-.bg-card { background-color: var(--color-card); }
-.bg-accent { background-color: var(--color-accent); }
-.border-border { border-color: var(--color-border); }
+.bg-code-bg {
+  background-color: var(--color-code-bg);
+}
+.bg-card {
+  background-color: var(--color-card);
+}
+.bg-accent {
+  background-color: var(--color-accent);
+}
+.border-border {
+  border-color: var(--color-border);
+}

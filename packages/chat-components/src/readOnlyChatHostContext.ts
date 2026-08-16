@@ -1,9 +1,9 @@
+import type { ChatHostContextValue } from "../../../src/browser/contexts/ChatHostContext";
 import {
   CHAT_UI_FEATURE_IDS,
   type ChatUiFeatureId,
   type ChatUiSupport,
 } from "../../../src/common/constants/chatUiFeatures";
-import type { ChatHostContextValue } from "../../../src/browser/contexts/ChatHostContext";
 
 /**
  * Convenience helper for mux.md (and any other read-only hosts).
