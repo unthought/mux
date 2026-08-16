@@ -11,13 +11,7 @@ function resolveMuxImport(subpath) {
   const base = path.resolve(__dirname, "..", "src", subpath);
 
   // Prefer explicit source extensions.
-  const candidates = [
-    `${base}.ts`,
-    `${base}.tsx`,
-    `${base}.js`,
-    `${base}.jsx`,
-    `${base}.json`,
-  ];
+  const candidates = [`${base}.ts`, `${base}.tsx`, `${base}.js`, `${base}.jsx`, `${base}.json`];
 
   for (const candidate of candidates) {
     if (fs.existsSync(candidate)) {
@@ -66,7 +60,6 @@ function ensureOutDir() {
 
 let webviewCssBuildPromise = null;
 
-
 function copySetiFont() {
   const src = path.resolve(__dirname, "..", "public", "seti.woff");
   const dest = path.resolve(__dirname, "out", "seti.woff");
@@ -103,8 +96,6 @@ function copyKatexAssets() {
     fs.copyFileSync(src, dest);
   }
 }
-
-
 
 function buildWebviewCss() {
   if (webviewCssBuildPromise) {
@@ -261,12 +252,7 @@ const webviewBuild = {
   splitting: true,
   chunkNames: "chunks/[name]-[hash]",
   ...sharedConfig,
-  plugins: [
-    ...sharedConfig.plugins,
-    svgReactPlugin,
-    stubKatexCssPlugin,
-    ...(isWatch ? [rebuildWebviewCssPlugin] : []),
-  ],
+  plugins: [...sharedConfig.plugins, svgReactPlugin, stubKatexCssPlugin, ...(isWatch ? [rebuildWebviewCssPlugin] : [])],
 };
 
 async function main() {
@@ -288,11 +274,7 @@ async function main() {
     return;
   }
 
-  await Promise.all([
-    buildWebviewCss(),
-    esbuild.build(extensionBuild),
-    esbuild.build(webviewBuild),
-  ]);
+  await Promise.all([buildWebviewCss(), esbuild.build(extensionBuild), esbuild.build(webviewBuild)]);
 }
 
 main().catch((error) => {

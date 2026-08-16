@@ -1,7 +1,3 @@
-import React from "react";
-
-import type { DisplayedMessage } from "mux/common/types/message";
-
 import { AssistantMessage } from "mux/browser/features/Messages/AssistantMessage";
 import { HistoryHiddenMessage } from "mux/browser/features/Messages/HistoryHiddenMessage";
 import { InitMessage } from "mux/browser/features/Messages/InitMessage";
@@ -11,6 +7,8 @@ import { ReasoningMessage } from "mux/browser/features/Messages/ReasoningMessage
 import { StreamErrorMessage } from "mux/browser/features/Messages/StreamErrorMessage";
 import { ToolMessage } from "mux/browser/features/Messages/ToolMessage";
 import { UserMessage } from "mux/browser/features/Messages/UserMessage";
+import type { DisplayedMessage } from "mux/common/types/message";
+import React from "react";
 
 export function DisplayedMessageRenderer(props: {
   message: DisplayedMessage;

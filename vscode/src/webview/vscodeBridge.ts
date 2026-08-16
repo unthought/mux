@@ -25,8 +25,7 @@ export function getVscodeBridge(): VscodeBridge {
     return cachedBridge;
   }
 
-  const traceId =
-    (document.body && document.body.dataset && document.body.dataset.muxTraceId) || "unknown";
+  const traceId = (document.body && document.body.dataset && document.body.dataset.muxTraceId) || "unknown";
 
   let vscode: { postMessage: (data: unknown) => void };
   try {

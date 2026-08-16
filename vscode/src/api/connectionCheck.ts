@@ -25,11 +25,7 @@ function normalizeBaseUrl(baseUrl: string): string {
   return baseUrl.replace(/\/$/, "");
 }
 
-async function promiseWithTimeout<T>(
-  promise: Promise<T>,
-  timeoutMs: number,
-  label: string
-): Promise<T> {
+async function promiseWithTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
   assert(timeoutMs > 0, "timeoutMs must be positive");
 
   return new Promise<T>((resolve, reject) => {
@@ -37,11 +33,9 @@ async function promiseWithTimeout<T>(
       reject(new Error(`${label} timed out after ${timeoutMs}ms`));
     }, timeoutMs);
 
-    promise
-      .then(resolve, reject)
-      .finally(() => {
-        clearTimeout(timeout);
-      });
+    promise.then(resolve, reject).finally(() => {
+      clearTimeout(timeout);
+    });
   });
 }
 
@@ -52,10 +46,7 @@ function formatError(error: unknown): string {
 function isUnauthorizedError(error: unknown): boolean {
   const msg = formatError(error).toLowerCase();
   return (
-    msg.includes("unauthorized") ||
-    msg.includes("401") ||
-    msg.includes("auth token") ||
-    msg.includes("authentication")
+    msg.includes("unauthorized") || msg.includes("401") || msg.includes("auth token") || msg.includes("authentication")
   );
 }
 
@@ -98,10 +89,7 @@ export async function checkServerReachable(
   }
 }
 
-export async function checkAuth(
-  client: ApiClient,
-  options?: { timeoutMs?: number }
-): Promise<AuthCheckResult> {
+export async function checkAuth(client: ApiClient, options?: { timeoutMs?: number }): Promise<AuthCheckResult> {
   const timeoutMs = options?.timeoutMs ?? 1_000;
 
   try {

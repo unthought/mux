@@ -1,35 +1,29 @@
-import React, { useMemo, useState } from "react";
-
 import { SendHorizontal } from "lucide-react";
-
-import type { StreamingMessageAggregator } from "mux/browser/utils/messages/StreamingMessageAggregator";
-import { getSendOptionsFromStorage } from "mux/browser/utils/messages/sendOptions";
-
-import { matchesKeybind, formatKeybind, KEYBINDS } from "mux/browser/utils/ui/keybinds";
-import { useAPI } from "mux/browser/contexts/API";
-import { AgentProvider, useAgent } from "mux/browser/contexts/AgentContext";
-import { ThinkingProvider } from "mux/browser/contexts/ThinkingContext";
-import { useThinkingLevel } from "mux/browser/hooks/useThinkingLevel";
-import { usePersistedState } from "mux/browser/hooks/usePersistedState";
-import { useModelsFromSettings } from "mux/browser/hooks/useModelsFromSettings";
-import { normalizeToCanonical } from "mux/common/utils/ai/models";
-import { useProviderOptions } from "mux/browser/hooks/useProviderOptions";
-import { useAutoCompactionSettings } from "mux/browser/hooks/useAutoCompactionSettings";
-
-import { VimTextArea } from "mux/browser/components/VimTextArea/VimTextArea";
+import { ContextUsageIndicatorButton } from "mux/browser/components/ContextUsageIndicatorButton/ContextUsageIndicatorButton";
 import { ModelSelector } from "mux/browser/components/ModelSelector/ModelSelector";
 import { ThinkingSliderComponent } from "mux/browser/components/ThinkingSlider/ThinkingSlider";
-import { ContextUsageIndicatorButton } from "mux/browser/components/ContextUsageIndicatorButton/ContextUsageIndicatorButton";
 import { Tooltip, TooltipTrigger, TooltipContent } from "mux/browser/components/Tooltip/Tooltip";
-
-import type { AgentId } from "mux/common/orpc/schemas";
-
-import { calculateTokenMeterData } from "mux/common/utils/tokens/tokenMeterUtils";
-import { createDisplayUsage } from "mux/common/utils/tokens/displayUsage";
-import type { ChatUsageDisplay } from "mux/common/utils/tokens/usageAggregator";
-import { enforceThinkingPolicy } from "mux/common/utils/thinking/policy";
-import { cn } from "mux/common/lib/utils";
+import { VimTextArea } from "mux/browser/components/VimTextArea/VimTextArea";
+import { AgentProvider, useAgent } from "mux/browser/contexts/AgentContext";
+import { useAPI } from "mux/browser/contexts/API";
+import { ThinkingProvider } from "mux/browser/contexts/ThinkingContext";
+import { useAutoCompactionSettings } from "mux/browser/hooks/useAutoCompactionSettings";
+import { useModelsFromSettings } from "mux/browser/hooks/useModelsFromSettings";
+import { usePersistedState } from "mux/browser/hooks/usePersistedState";
+import { useProviderOptions } from "mux/browser/hooks/useProviderOptions";
+import { useThinkingLevel } from "mux/browser/hooks/useThinkingLevel";
+import { getSendOptionsFromStorage } from "mux/browser/utils/messages/sendOptions";
+import type { StreamingMessageAggregator } from "mux/browser/utils/messages/StreamingMessageAggregator";
+import { matchesKeybind, formatKeybind, KEYBINDS } from "mux/browser/utils/ui/keybinds";
 import { VIM_ENABLED_KEY, getInputKey, getModelKey } from "mux/common/constants/storage";
+import { cn } from "mux/common/lib/utils";
+import type { AgentId } from "mux/common/orpc/schemas";
+import { normalizeToCanonical } from "mux/common/utils/ai/models";
+import { enforceThinkingPolicy } from "mux/common/utils/thinking/policy";
+import { createDisplayUsage } from "mux/common/utils/tokens/displayUsage";
+import { calculateTokenMeterData } from "mux/common/utils/tokens/tokenMeterUtils";
+import type { ChatUsageDisplay } from "mux/common/utils/tokens/usageAggregator";
+import React, { useMemo, useState } from "react";
 
 const SEND_MESSAGE_TIMEOUT_MS = 30_000;
 
@@ -84,8 +78,7 @@ function getLastContextUsage(
       continue;
     }
 
-    const providerMetadata =
-      msg.metadata?.contextProviderMetadata ?? msg.metadata?.providerMetadata;
+    const providerMetadata = msg.metadata?.contextProviderMetadata ?? msg.metadata?.providerMetadata;
     const model = msg.metadata?.model ?? fallbackModel ?? "unknown";
 
     return createDisplayUsage(rawUsage, model, providerMetadata);
@@ -144,9 +137,7 @@ function ChatComposerInner(props: {
 
   // Note: avoid memoizing against the aggregator reference.
   // The aggregator mutates in-place as events stream in.
-  const lastContextUsage = aggregator
-    ? getLastContextUsage(aggregator, usageModelFromAggregator)
-    : undefined;
+  const lastContextUsage = aggregator ? getLastContextUsage(aggregator, usageModelFromAggregator) : undefined;
 
   const liveUsage = (() => {
     if (!aggregator) {
@@ -181,11 +172,7 @@ function ChatComposerInner(props: {
   const autoCompactionSettings = useAutoCompactionSettings(props.workspaceId, usageModel);
 
   const canSend =
-    !props.disabled &&
-    !isSending &&
-    input.trim().length > 0 &&
-    apiState.status === "connected" &&
-    Boolean(api);
+    !props.disabled && !isSending && input.trim().length > 0 && apiState.status === "connected" && Boolean(api);
 
   const onModelChange = (model: string) => {
     const canonicalModel = normalizeToCanonical(model);
@@ -269,8 +256,7 @@ function ChatComposerInner(props: {
       );
 
       if (!result.success) {
-        const errorString =
-          typeof result.error === "string" ? result.error : JSON.stringify(result.error, null, 2);
+        const errorString = typeof result.error === "string" ? result.error : JSON.stringify(result.error, null, 2);
         props.onNotice({ level: "error", message: `Send failed: ${errorString}` });
         restoreTrimmedIfSafe();
         return;
@@ -305,23 +291,17 @@ function ChatComposerInner(props: {
     }
 
     if (isCompactingStream) {
-      const interruptKeybind = vimEnabled
-        ? KEYBINDS.INTERRUPT_STREAM_VIM
-        : KEYBINDS.INTERRUPT_STREAM_NORMAL;
+      const interruptKeybind = vimEnabled ? KEYBINDS.INTERRUPT_STREAM_VIM : KEYBINDS.INTERRUPT_STREAM_NORMAL;
       return `Compacting... (${formatKeybind(interruptKeybind)} cancel | ${formatKeybind(KEYBINDS.SEND_MESSAGE)} to queue)`;
     }
 
     const hints: string[] = [];
     if (canInterruptStream) {
-      const interruptKeybind = vimEnabled
-        ? KEYBINDS.INTERRUPT_STREAM_VIM
-        : KEYBINDS.INTERRUPT_STREAM_NORMAL;
+      const interruptKeybind = vimEnabled ? KEYBINDS.INTERRUPT_STREAM_VIM : KEYBINDS.INTERRUPT_STREAM_NORMAL;
       hints.push(`${formatKeybind(interruptKeybind)} to interrupt`);
     }
 
-    hints.push(
-      `${formatKeybind(KEYBINDS.SEND_MESSAGE)} to ${canInterruptStream ? "queue" : "send"}`
-    );
+    hints.push(`${formatKeybind(KEYBINDS.SEND_MESSAGE)} to ${canInterruptStream ? "queue" : "send"}`);
     hints.push(`Click model to choose, ${formatKeybind(KEYBINDS.CYCLE_MODEL)} to cycle`);
     hints.push(`/vim to toggle Vim mode (${vimEnabled ? "on" : "off"})`);
 
@@ -370,10 +350,7 @@ function ChatComposerInner(props: {
           </div>
 
           <div className="flex shrink-0 items-center gap-1.5">
-            <ContextUsageIndicatorButton
-              data={contextUsageData}
-              autoCompaction={autoCompactionSettings}
-            />
+            <ContextUsageIndicatorButton data={contextUsageData} autoCompaction={autoCompactionSettings} />
             <SimpleAgentToggle agentId={agentId} onChange={setAgentId} />
 
             <Tooltip>
@@ -393,9 +370,7 @@ function ChatComposerInner(props: {
                   <SendHorizontal className="h-3.5 w-3.5" strokeWidth={2.5} />
                 </button>
               </TooltipTrigger>
-              <TooltipContent align="center">
-                Send message ({formatKeybind(KEYBINDS.SEND_MESSAGE)})
-              </TooltipContent>
+              <TooltipContent align="center">Send message ({formatKeybind(KEYBINDS.SEND_MESSAGE)})</TooltipContent>
             </Tooltip>
           </div>
         </div>

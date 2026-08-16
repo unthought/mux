@@ -1,8 +1,8 @@
-import * as vscode from "vscode";
 import assert from "node:assert";
 
 import { getMuxHome } from "mux/common/constants/paths";
 import { ServerLockfile } from "mux/node/services/serverLockfile";
+import * as vscode from "vscode";
 
 export type ConnectionMode = "auto" | "server-only" | "file-only";
 
@@ -41,9 +41,7 @@ export function getConnectionModeSetting(): ConnectionMode {
   return "auto";
 }
 
-export async function discoverServerConfig(
-  context: vscode.ExtensionContext
-): Promise<DiscoveredServerConfig> {
+export async function discoverServerConfig(context: vscode.ExtensionContext): Promise<DiscoveredServerConfig> {
   const config = vscode.workspace.getConfiguration("mux");
   const serverUrlOverrideRaw = config.get<string>("serverUrl")?.trim();
 
@@ -103,10 +101,7 @@ export async function discoverServerConfig(
   };
 }
 
-export async function storeAuthTokenOverride(
-  context: vscode.ExtensionContext,
-  authToken: string
-): Promise<void> {
+export async function storeAuthTokenOverride(context: vscode.ExtensionContext, authToken: string): Promise<void> {
   await context.secrets.store(SERVER_AUTH_TOKEN_SECRET_KEY, authToken);
 }
 

@@ -108,8 +108,12 @@ describe("parseWebviewToExtensionMessage", () => {
 
     expect(parseWebviewToExtensionMessage({ type: "orpcCall" })).toBeNull();
     expect(parseWebviewToExtensionMessage({ type: "orpcCall", requestId: 123 })).toBeNull();
-    expect(parseWebviewToExtensionMessage({ type: "orpcCall", requestId: "req-1", path: "nope", input: {} })).toBeNull();
-    expect(parseWebviewToExtensionMessage({ type: "orpcCall", requestId: "req-1", path: ["ok", 123], input: {} })).toBeNull();
+    expect(
+      parseWebviewToExtensionMessage({ type: "orpcCall", requestId: "req-1", path: "nope", input: {} })
+    ).toBeNull();
+    expect(
+      parseWebviewToExtensionMessage({ type: "orpcCall", requestId: "req-1", path: ["ok", 123], input: {} })
+    ).toBeNull();
   });
 
   test("parses orpcCancel", () => {

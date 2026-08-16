@@ -85,11 +85,7 @@ function isOrpcStreamErrorMessage(raw: unknown): raw is OrpcStreamError {
   }
 
   const record = raw as Record<string, unknown>;
-  return (
-    record.type === "orpcStreamError" &&
-    typeof record.streamId === "string" &&
-    typeof record.error === "string"
-  );
+  return record.type === "orpcStreamError" && typeof record.streamId === "string" && typeof record.error === "string";
 }
 
 class VscodeOrpcAsyncIterator<T> implements AsyncIterator<T>, AsyncIterable<T> {

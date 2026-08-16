@@ -1,9 +1,9 @@
-import { Config } from "mux/node/config";
 import assert from "node:assert";
 
 import type { FrontendWorkspaceMetadata, WorkspaceActivitySnapshot } from "mux/common/types/workspace";
-import { type ExtensionMetadata, readExtensionMetadata } from "mux/node/utils/extensionMetadata";
+import { Config } from "mux/node/config";
 import { createRuntime } from "mux/node/runtime/runtimeFactory";
+import { type ExtensionMetadata, readExtensionMetadata } from "mux/node/utils/extensionMetadata";
 
 import type { ApiClient } from "./api/client";
 
@@ -21,11 +21,9 @@ async function promiseWithTimeout<T>(promise: Promise<T>, timeoutMs: number, lab
       reject(new Error(`${label} timed out after ${timeoutMs}ms`));
     }, timeoutMs);
 
-    promise
-      .then(resolve, reject)
-      .finally(() => {
-        clearTimeout(timeout);
-      });
+    promise.then(resolve, reject).finally(() => {
+      clearTimeout(timeout);
+    });
   });
 }
 export interface WorkspaceWithContext extends FrontendWorkspaceMetadata {
@@ -57,9 +55,7 @@ function enrichAndSort(
   return enriched;
 }
 
-export async function getAllWorkspacesFromFiles(options?: {
-  timeoutMs?: number;
-}): Promise<WorkspaceWithContext[]> {
+export async function getAllWorkspacesFromFiles(options?: { timeoutMs?: number }): Promise<WorkspaceWithContext[]> {
   const timeoutMs = options?.timeoutMs ?? DEFAULT_WORKSPACE_LIST_TIMEOUT_MS;
 
   const config = new Config();
@@ -112,4 +108,3 @@ export function getWorkspacePath(workspace: WorkspaceWithContext): string {
   const runtime = createRuntime(workspace.runtimeConfig, { projectPath: workspace.projectPath });
   return runtime.getWorkspacePath(workspace.projectPath, workspace.name);
 }
-

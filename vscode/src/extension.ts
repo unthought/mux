@@ -1,16 +1,11 @@
-import * as vscode from "vscode";
 import assert from "node:assert";
 import { createHash, randomBytes } from "node:crypto";
 
 import { formatRelativeTime } from "mux/browser/utils/ui/dateTime";
-import {
-  getAllWorkspacesFromFiles,
-  getAllWorkspacesFromApi,
-  getWorkspacePath,
-  WorkspaceWithContext,
-} from "./muxConfig";
-import { checkAuth, checkServerReachable } from "./api/connectionCheck";
+import * as vscode from "vscode";
+
 import { createApiClient, type ApiClient } from "./api/client";
+import { checkAuth, checkServerReachable } from "./api/connectionCheck";
 import {
   clearAuthTokenOverride,
   discoverServerConfig,
@@ -18,13 +13,15 @@ import {
   storeAuthTokenOverride,
   type ConnectionMode,
 } from "./api/discovery";
-import type {
-  ExtensionToWebviewMessage,
-  UiConnectionStatus,
-  UiWorkspace,
-} from "./webview/protocol";
+import {
+  getAllWorkspacesFromFiles,
+  getAllWorkspacesFromApi,
+  getWorkspacePath,
+  WorkspaceWithContext,
+} from "./muxConfig";
 import { isAllowedOrpcPath } from "./orpcAllowlist";
 import { parseWebviewToExtensionMessage } from "./parseWebviewToExtensionMessage";
+import type { ExtensionToWebviewMessage, UiConnectionStatus, UiWorkspace } from "./webview/protocol";
 import { openWorkspace } from "./workspaceOpener";
 
 let sessionPreferredMode: "api" | "file" | null = null;
@@ -169,9 +166,7 @@ async function setPendingAutoSelectWorkspace(
   await context.globalState.update(PENDING_AUTO_SELECT_STATE_KEY, state);
 }
 
-async function getPendingAutoSelectWorkspace(
-  context: vscode.ExtensionContext
-): Promise<PendingAutoSelectState | null> {
+async function getPendingAutoSelectWorkspace(context: vscode.ExtensionContext): Promise<PendingAutoSelectState | null> {
   assert(context, "getPendingAutoSelectWorkspace requires context");
 
   const pending = context.globalState.get<PendingAutoSelectState>(PENDING_AUTO_SELECT_STATE_KEY);
@@ -332,9 +327,7 @@ async function tryGetWorkspacesFromApi(
   return { workspaces };
 }
 
-async function getWorkspacesForCommand(
-  context: vscode.ExtensionContext
-): Promise<WorkspaceWithContext[] | null> {
+async function getWorkspacesForCommand(context: vscode.ExtensionContext): Promise<WorkspaceWithContext[] | null> {
   const modeSetting: ConnectionMode = getConnectionModeSetting();
 
   if (modeSetting === "file-only" || sessionPreferredMode === "file") {
@@ -474,10 +467,7 @@ function createWorkspaceQuickPickItem(
   const fallbackAiSettings = aiByAgent?.[fallbackAgentId];
 
   // Prefer activity-derived model/thinking ("last used") but fall back to workspace-scoped settings.
-  const lastModel =
-    workspace.extensionMetadata?.lastModel ??
-    fallbackAiSettings?.model ??
-    workspace.aiSettings?.model;
+  const lastModel = workspace.extensionMetadata?.lastModel ?? fallbackAiSettings?.model ?? workspace.aiSettings?.model;
   if (lastModel) {
     detailParts.push(`Model: ${lastModel}`);
   }
@@ -532,9 +522,7 @@ async function openWorkspaceCommand(
   const allItems = workspaces.map(createWorkspaceQuickPickItem);
 
   // Use createQuickPick for more control over sorting behavior
-  const quickPick = vscode.window.createQuickPick<
-    vscode.QuickPickItem & { workspace: WorkspaceWithContext }
-  >();
+  const quickPick = vscode.window.createQuickPick<vscode.QuickPickItem & { workspace: WorkspaceWithContext }>();
   quickPick.placeholder = "Select a mux workspace to open";
   quickPick.matchOnDescription = true;
   quickPick.matchOnDetail = false;
@@ -560,18 +548,18 @@ async function openWorkspaceCommand(
   quickPick.show();
 
   // Wait for user selection
-  const selected = await new Promise<
-    (vscode.QuickPickItem & { workspace: WorkspaceWithContext }) | undefined
-  >((resolve) => {
-    quickPick.onDidAccept(() => {
-      resolve(quickPick.selectedItems[0]);
-      quickPick.dispose();
-    });
-    quickPick.onDidHide(() => {
-      resolve(undefined);
-      quickPick.dispose();
-    });
-  });
+  const selected = await new Promise<(vscode.QuickPickItem & { workspace: WorkspaceWithContext }) | undefined>(
+    (resolve) => {
+      quickPick.onDidAccept(() => {
+        resolve(quickPick.selectedItems[0]);
+        quickPick.dispose();
+      });
+      quickPick.onDidHide(() => {
+        resolve(undefined);
+        quickPick.dispose();
+      });
+    }
+  );
 
   if (!selected) {
     return;
@@ -603,9 +591,7 @@ async function configureConnectionCommand(context: vscode.ExtensionContext): Pro
           description: currentUrl ? `Current: ${currentUrl}` : "Current: auto-discover",
         },
         ...(currentUrl
-          ? ([
-              { label: "Clear server URL override", description: "Use env/lockfile/default" },
-            ] as const)
+          ? ([{ label: "Clear server URL override", description: "Use env/lockfile/default" }] as const)
           : ([] as const)),
         {
           label: "Set auth token",
@@ -648,11 +634,7 @@ async function configureConnectionCommand(context: vscode.ExtensionContext): Pro
       }
 
       const trimmed = value.trim();
-      await config.update(
-        "serverUrl",
-        trimmed ? trimmed : undefined,
-        vscode.ConfigurationTarget.Global
-      );
+      await config.update("serverUrl", trimmed ? trimmed : undefined, vscode.ConfigurationTarget.Global);
       continue;
     }
 
@@ -699,9 +681,7 @@ async function debugConnectionCommand(context: vscode.ExtensionContext): Promise
     discovery = await discoverServerConfig(context);
   } catch (error) {
     muxLogError("mux: debugConnection discovery failed", { error: formatError(error) });
-    void vscode.window.showErrorMessage(
-      `mux: Failed to discover server config. (${formatError(error)})`
-    );
+    void vscode.window.showErrorMessage(`mux: Failed to discover server config. (${formatError(error)})`);
     return;
   }
 
@@ -716,9 +696,7 @@ async function debugConnectionCommand(context: vscode.ExtensionContext): Promise
   muxLogInfo("mux: debugConnection server reachable", reachable);
 
   if (reachable.status !== "ok") {
-    void vscode.window.showErrorMessage(
-      `mux: Server not reachable at ${discovery.baseUrl}. (${reachable.error})`
-    );
+    void vscode.window.showErrorMessage(`mux: Server not reachable at ${discovery.baseUrl}. (${reachable.error})`);
     return;
   }
 
@@ -728,14 +706,9 @@ async function debugConnectionCommand(context: vscode.ExtensionContext): Promise
   muxLogInfo("mux: debugConnection auth", auth);
 
   if (auth.status !== "ok") {
-    const hint =
-      auth.status === "unauthorized"
-        ? ' Run "mux: Configure Connection" to update the auth token.'
-        : "";
+    const hint = auth.status === "unauthorized" ? ' Run "mux: Configure Connection" to update the auth token.' : "";
 
-    void vscode.window.showErrorMessage(
-      `mux: Failed to authenticate at ${discovery.baseUrl}. (${auth.error})${hint}`
-    );
+    void vscode.window.showErrorMessage(`mux: Failed to authenticate at ${discovery.baseUrl}. (${auth.error})${hint}`);
     return;
   }
 
@@ -763,9 +736,7 @@ async function getWorkspacesForSidebar(
   const modeSetting: ConnectionMode = getConnectionModeSetting();
   muxLogDebug("mux: getWorkspacesForSidebar", { modeSetting });
 
-  const tryReadFromFiles = async (): Promise<
-    { workspaces: WorkspaceWithContext[] } | { error: string }
-  > => {
+  const tryReadFromFiles = async (): Promise<{ workspaces: WorkspaceWithContext[] } | { error: string }> => {
     try {
       return { workspaces: await getAllWorkspacesFromFiles() };
     } catch (error) {
@@ -871,22 +842,12 @@ async function getWorkspacesForSidebar(
   }
 }
 
-function renderChatViewHtml(
-  webview: vscode.Webview,
-  extensionUri: vscode.Uri,
-  traceId: string
-): string {
+function renderChatViewHtml(webview: vscode.Webview, extensionUri: vscode.Uri, traceId: string): string {
   assert(typeof traceId === "string" && traceId.length > 0, "traceId must be a non-empty string");
 
-  const scriptUri = webview.asWebviewUri(
-    vscode.Uri.joinPath(extensionUri, "out", "muxChatView.js")
-  );
-  const styleUri = webview.asWebviewUri(
-    vscode.Uri.joinPath(extensionUri, "out", "muxChatView.css")
-  );
-  const katexStyleUri = webview.asWebviewUri(
-    vscode.Uri.joinPath(extensionUri, "out", "katex", "katex.min.css")
-  );
+  const scriptUri = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, "out", "muxChatView.js"));
+  const styleUri = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, "out", "muxChatView.css"));
+  const katexStyleUri = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, "out", "katex", "katex.min.css"));
   const nonce = getNonce();
 
   const csp = [
@@ -966,8 +927,7 @@ class MuxChatViewProvider implements vscode.WebviewViewProvider, vscode.Disposab
   private subscriptionAbort: AbortController | null = null;
 
   constructor(private readonly context: vscode.ExtensionContext) {
-    this.selectedWorkspaceId =
-      context.workspaceState.get<string>(SELECTED_WORKSPACE_STATE_KEY) ?? null;
+    this.selectedWorkspaceId = context.workspaceState.get<string>(SELECTED_WORKSPACE_STATE_KEY) ?? null;
   }
 
   private clearReadyProbeInterval(): void {
@@ -1019,10 +979,7 @@ class MuxChatViewProvider implements vscode.WebviewViewProvider, vscode.Disposab
     }
 
     this.selectedWorkspaceId = workspaceId;
-    await this.context.workspaceState.update(
-      SELECTED_WORKSPACE_STATE_KEY,
-      workspaceId ? workspaceId : undefined
-    );
+    await this.context.workspaceState.update(SELECTED_WORKSPACE_STATE_KEY, workspaceId ? workspaceId : undefined);
 
     this.postMessage({ type: "setSelectedWorkspace", workspaceId });
     await this.updateChatSubscription();
@@ -1053,9 +1010,7 @@ class MuxChatViewProvider implements vscode.WebviewViewProvider, vscode.Disposab
 
       muxLogDebug("mux.chatView: webview.options set", {
         enableScripts: view.webview.options.enableScripts ?? false,
-        localResourceRoots: (view.webview.options.localResourceRoots ?? []).map((uri) =>
-          uri.toString()
-        ),
+        localResourceRoots: (view.webview.options.localResourceRoots ?? []).map((uri) => uri.toString()),
       });
 
       const visibilityDisposable = view.onDidChangeVisibility(async () => {
@@ -1720,10 +1675,7 @@ class MuxChatViewProvider implements vscode.WebviewViewProvider, vscode.Disposab
     }
 
     try {
-      const iterator = await api.client.workspace.onChat(
-        { workspaceId },
-        { signal: controller.signal }
-      );
+      const iterator = await api.client.workspace.onChat({ workspaceId }, { signal: controller.signal });
 
       for await (const event of iterator) {
         if (controller.signal.aborted) {
@@ -1823,9 +1775,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand("mux.configureConnection", () =>
-      configureConnectionCommand(context)
-    )
+    vscode.commands.registerCommand("mux.configureConnection", () => configureConnectionCommand(context))
   );
 
   context.subscriptions.push(

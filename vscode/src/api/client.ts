@@ -1,7 +1,7 @@
-import { RPCLink } from "@orpc/client/fetch";
-import type { RouterClient } from "@orpc/server";
 import assert from "node:assert";
 
+import { RPCLink } from "@orpc/client/fetch";
+import type { RouterClient } from "@orpc/server";
 import { createClient } from "mux/common/orpc/client";
 import type { AppRouter } from "mux/node/orpc/router";
 

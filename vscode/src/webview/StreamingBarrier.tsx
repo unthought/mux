@@ -1,12 +1,11 @@
-import React from "react";
-
-import type { StreamingMessageAggregator } from "mux/browser/utils/messages/StreamingMessageAggregator";
 import { StreamingBarrierView } from "mux/browser/features/Messages/ChatBarrier/StreamingBarrierView";
-import { getModelName } from "mux/common/utils/ai/models";
+import { getDefaultModel } from "mux/browser/hooks/useModelsFromSettings";
+import { readPersistedState } from "mux/browser/hooks/usePersistedState";
+import type { StreamingMessageAggregator } from "mux/browser/utils/messages/StreamingMessageAggregator";
 import { formatKeybind, KEYBINDS } from "mux/browser/utils/ui/keybinds";
 import { VIM_ENABLED_KEY, getModelKey } from "mux/common/constants/storage";
-import { readPersistedState } from "mux/browser/hooks/usePersistedState";
-import { getDefaultModel } from "mux/browser/hooks/useModelsFromSettings";
+import { getModelName } from "mux/common/utils/ai/models";
+import React from "react";
 
 type StreamingPhase =
   | "starting" // Message sent, waiting for stream-start
