@@ -352,6 +352,59 @@ General details only.
     );
   });
 
+  describe("global instruction source selection", () => {
+    // Stand-in for a runtime that owns its global config (Docker/kubedock keep their mux home
+    // at an absolute path such as /var/mux instead of aliasing the host's ~/.mux).
+    class RuntimeOwnedMuxHomeRuntime extends LocalRuntime {
+      constructor(
+        workspacePath: string,
+        private readonly muxHome: string
+      ) {
+        super(workspacePath);
+      }
+      override getMuxHome(): string {
+        return this.muxHome;
+      }
+    }
+
+    const HOST_MARKER = "HOST GLOBAL INSTRUCTIONS MARKER";
+    const RUNTIME_MARKER = "RUNTIME GLOBAL INSTRUCTIONS MARKER";
+    let runtimeMuxHome: string;
+    let metadata: WorkspaceMetadata;
+
+    beforeEach(async () => {
+      runtimeMuxHome = path.join(tempDir, "runtime-mux-home");
+      await fs.mkdir(runtimeMuxHome, { recursive: true });
+      await fs.writeFile(path.join(globalDir, "AGENTS.md"), `# Global\n${HOST_MARKER}\n`);
+      await fs.writeFile(path.join(runtimeMuxHome, "AGENTS.md"), `# Global\n${RUNTIME_MARKER}\n`);
+      metadata = {
+        id: "test-workspace",
+        name: "test-workspace",
+        projectName: "test-project",
+        projectPath: projectDir,
+        runtimeConfig: DEFAULT_RUNTIME_CONFIG,
+      };
+    });
+
+    test("reads the global set from the runtime when it owns an absolute mux home", async () => {
+      const dockerLike = new RuntimeOwnedMuxHomeRuntime(tempDir, runtimeMuxHome);
+
+      const systemMessage = await buildSystemMessage(metadata, dockerLike, workspaceDir);
+
+      const customInstructions = extractTagContent(systemMessage, "custom-instructions") ?? "";
+      expect(customInstructions).toContain(RUNTIME_MARKER);
+      expect(customInstructions).not.toContain(HOST_MARKER);
+    });
+
+    test("keeps the host global set for runtimes whose mux home aliases ~/.mux", async () => {
+      const systemMessage = await buildSystemMessage(metadata, runtime, workspaceDir);
+
+      const customInstructions = extractTagContent(systemMessage, "custom-instructions") ?? "";
+      expect(customInstructions).toContain(HOST_MARKER);
+      expect(customInstructions).not.toContain(RUNTIME_MARKER);
+    });
+  });
+
   describe("agentSystemPrompt scoped instructions", () => {
     test("extracts model section from agentSystemPrompt", async () => {
       const agentSystemPrompt = `You are a helpful agent.
