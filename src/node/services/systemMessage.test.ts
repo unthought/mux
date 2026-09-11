@@ -12,6 +12,12 @@ const extractTagContent = (message: string, tagName: string): string | null => {
 };
 import { describe, test, expect, beforeEach, afterEach, spyOn, type Mock } from "bun:test";
 import { LocalRuntime } from "@/node/runtime/LocalRuntime";
+import { LocalBaseRuntime } from "@/node/runtime/LocalBaseRuntime";
+import type {
+  WorkspaceCreationResult,
+  WorkspaceForkResult,
+  WorkspaceInitResult,
+} from "@/node/runtime/Runtime";
 
 // Note: in this file we avoid tests that are merely tautological assertions of constants. Only
 // tests that verify branching logic should be here.
@@ -353,17 +359,49 @@ General details only.
   });
 
   describe("global instruction source selection", () => {
-    // Stand-in for a runtime that owns its global config (Docker/kubedock keep their mux home
-    // at an absolute path such as /var/mux instead of aliasing the host's ~/.mux).
-    class RuntimeOwnedMuxHomeRuntime extends LocalRuntime {
+    // Stand-in for a runtime that owns its global config but is NOT a plain host runtime.
+    // Shaped like DevcontainerRuntime: extends LocalBaseRuntime, keeps the default "~/.mux"
+    // mux home, and resolves "~" to the CONTAINER home — not the host's. Reads of "~/..." must
+    // therefore land in that container home for the runtime branch to be exercised.
+    class DevcontainerShapedRuntime extends LocalBaseRuntime {
       constructor(
-        workspacePath: string,
-        private readonly muxHome: string
+        private readonly workspacePath: string,
+        private readonly containerHome: string,
+        private readonly muxHome = "~/.mux"
       ) {
-        super(workspacePath);
+        super();
+      }
+      private expandContainerTilde(filePath: string): string {
+        if (filePath === "~") return this.containerHome;
+        if (filePath.startsWith("~/")) return this.containerHome + filePath.slice(1);
+        return filePath;
       }
       override getMuxHome(): string {
         return this.muxHome;
+      }
+      override resolvePath(filePath: string): Promise<string> {
+        return Promise.resolve(this.expandContainerTilde(filePath));
+      }
+      override readFile(filePath: string, abortSignal?: AbortSignal): ReadableStream<Uint8Array> {
+        return super.readFile(this.expandContainerTilde(filePath), abortSignal);
+      }
+      getWorkspacePath(): string {
+        return this.workspacePath;
+      }
+      createWorkspace(): Promise<WorkspaceCreationResult> {
+        return Promise.reject(new Error("not used in this test"));
+      }
+      initWorkspace(): Promise<WorkspaceInitResult> {
+        return Promise.reject(new Error("not used in this test"));
+      }
+      renameWorkspace(): Promise<never> {
+        return Promise.reject(new Error("not used in this test"));
+      }
+      deleteWorkspace(): Promise<never> {
+        return Promise.reject(new Error("not used in this test"));
+      }
+      forkWorkspace(): Promise<WorkspaceForkResult> {
+        return Promise.reject(new Error("not used in this test"));
       }
     }
 
@@ -386,8 +424,26 @@ General details only.
       };
     });
 
-    test("reads the global set from the runtime when it owns an absolute mux home", async () => {
-      const dockerLike = new RuntimeOwnedMuxHomeRuntime(tempDir, runtimeMuxHome);
+    test("devcontainer-shaped runtime (~/.mux in the container home) reads the global set through the runtime", async () => {
+      // Container home is a temp dir on this machine; its ~/.mux/AGENTS.md carries the runtime
+      // marker while the host's (MUX_ROOT) carries the host marker.
+      const containerHome = path.join(tempDir, "container-home");
+      await fs.mkdir(path.join(containerHome, ".mux"), { recursive: true });
+      await fs.writeFile(
+        path.join(containerHome, ".mux", "AGENTS.md"),
+        `# Global\n${RUNTIME_MARKER}\n`
+      );
+      const devcontainer = new DevcontainerShapedRuntime(tempDir, containerHome);
+
+      const systemMessage = await buildSystemMessage(metadata, devcontainer, workspaceDir);
+
+      const customInstructions = extractTagContent(systemMessage, "custom-instructions") ?? "";
+      expect(customInstructions).toContain(RUNTIME_MARKER);
+      expect(customInstructions).not.toContain(HOST_MARKER);
+    });
+
+    test("runtime with an absolute mux home (Docker-style /var/mux) reads the global set through the runtime", async () => {
+      const dockerLike = new DevcontainerShapedRuntime(tempDir, tempDir, runtimeMuxHome);
 
       const systemMessage = await buildSystemMessage(metadata, dockerLike, workspaceDir);
 
@@ -396,7 +452,7 @@ General details only.
       expect(customInstructions).not.toContain(HOST_MARKER);
     });
 
-    test("keeps the host global set for runtimes whose mux home aliases ~/.mux", async () => {
+    test("keeps the host global set for the plain local runtime", async () => {
       const systemMessage = await buildSystemMessage(metadata, runtime, workspaceDir);
 
       const customInstructions = extractTagContent(systemMessage, "custom-instructions") ?? "";
