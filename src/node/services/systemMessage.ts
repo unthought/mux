@@ -221,6 +221,26 @@ function getSystemDirectory(): string {
 }
 
 /**
+ * Read the GLOBAL instruction set (~/.mux/AGENTS.md) from wherever the runtime keeps its
+ * mux home.
+ *
+ * Runtimes whose mux home is home-relative (`~/.mux`: local, worktree, SSH) alias the host's
+ * global config, so they keep the historical host read — this also preserves MUX_ROOT /
+ * NODE_ENV suffixing via getMuxHome(), byte-identical to before. Runtimes with their own
+ * absolute mux home (Docker/kubedock: `/var/mux`) own their global config: a corpus mounted
+ * into the container (e.g. an identity-bound AGENTS.md) must reach the prompt instead of the
+ * host's file. Mirrors how agentSkillsService resolves `${runtime.getMuxHome()}/skills`.
+ * See https://linear.app/unthought/issue/UN-832.
+ */
+async function readGlobalInstructionSet(runtime: Runtime): Promise<string | null> {
+  const runtimeMuxHome = runtime.getMuxHome();
+  if (runtimeMuxHome.startsWith("~")) {
+    return readInstructionSet(getSystemDirectory());
+  }
+  return readInstructionSetFromRuntime(runtime, runtimeMuxHome);
+}
+
+/**
  * Search instruction sources in priority order: agent → context → global.
  * Returns the first non-null result from the extractor function.
  */
@@ -363,7 +383,7 @@ async function readInstructionSources(
   runtime: Runtime,
   workspacePath: string
 ): Promise<[string | null, string | null]> {
-  const globalInstructions = await readInstructionSet(getSystemDirectory());
+  const globalInstructions = await readGlobalInstructionSet(runtime);
   const contextInstructions = isMultiProject(metadata)
     ? await readMultiProjectContextInstructions(metadata, runtime, workspacePath)
     : ((await readInstructionSetFromRuntime(runtime, workspacePath)) ??
