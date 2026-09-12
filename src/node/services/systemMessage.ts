@@ -15,6 +15,9 @@ import {
   stripScopedInstructionSections,
 } from "@/node/utils/main/markdown";
 import type { Runtime } from "@/node/runtime/Runtime";
+import { LocalRuntime } from "@/node/runtime/LocalRuntime";
+import { WorktreeRuntime } from "@/node/runtime/WorktreeRuntime";
+import { shouldUseHostGlobalMuxFallback } from "@/node/runtime/hostGlobalMuxHome";
 import { getMuxHome } from "@/common/constants/paths";
 import { getAvailableTools } from "@/common/utils/tools/toolDefinitions";
 import { getToolAvailabilityOptions } from "@/common/utils/tools/toolAvailability";
@@ -221,6 +224,33 @@ function getSystemDirectory(): string {
 }
 
 /**
+ * Read the GLOBAL instruction set (<muxHome>/AGENTS.md) through the same seam the global
+ * agents/skills roots use (agentDefinitionsService / agentSkillsService).
+ *
+ * - Plain host runtimes (LocalRuntime, WorktreeRuntime) and SSH runtimes whose `~/.mux`
+ *   aliases the host's (shouldUseHostGlobalMuxFallback) keep the historical host read via
+ *   getSystemDirectory() — byte-identical, MUX_ROOT / NODE_ENV suffixing preserved.
+ * - Every other runtime owns its mux home and reads through the runtime: DevcontainerRuntime
+ *   (`~/.mux` where `~` is the CONTAINER home, resolved via runtime.resolvePath) and
+ *   Docker/kubedock (`/var/mux`). A corpus mounted into the container (e.g. an identity-bound
+ *   AGENTS.md) must reach the prompt instead of the host's file.
+ *
+ * `resolvePath` is applied first because the instruction reader only ever received absolute
+ * paths from the project/context callers. See https://linear.app/unthought/issue/UN-832.
+ */
+async function readGlobalInstructionSet(runtime: Runtime): Promise<string | null> {
+  const isHostRuntime =
+    runtime instanceof LocalRuntime ||
+    runtime instanceof WorktreeRuntime ||
+    shouldUseHostGlobalMuxFallback(runtime);
+  if (isHostRuntime) {
+    return readInstructionSet(getSystemDirectory());
+  }
+  const runtimeMuxHome = await runtime.resolvePath(runtime.getMuxHome());
+  return readInstructionSetFromRuntime(runtime, runtimeMuxHome);
+}
+
+/**
  * Search instruction sources in priority order: agent → context → global.
  * Returns the first non-null result from the extractor function.
  */
@@ -363,7 +393,7 @@ async function readInstructionSources(
   runtime: Runtime,
   workspacePath: string
 ): Promise<[string | null, string | null]> {
-  const globalInstructions = await readInstructionSet(getSystemDirectory());
+  const globalInstructions = await readGlobalInstructionSet(runtime);
   const contextInstructions = isMultiProject(metadata)
     ? await readMultiProjectContextInstructions(metadata, runtime, workspacePath)
     : ((await readInstructionSetFromRuntime(runtime, workspacePath)) ??
